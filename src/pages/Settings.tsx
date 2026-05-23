@@ -226,10 +226,8 @@ export default function Settings() {
                   </div>
                 </div>
                 <Dialog open={isSubOpen} onOpenChange={setIsSubOpen}>
-                  <DialogTrigger asChild>
-                  <button type="button" className={cn(buttonVariants({ variant: 'outline' }), "bg-white/5 text-white hover:bg-white/10 border border-white/10 rounded-xl px-4 py-2 flex items-center")}>
+                  <DialogTrigger className={cn(buttonVariants({ variant: 'outline' }), "bg-white/5 text-white hover:bg-white/10 border border-white/10 rounded-xl px-4 py-2 flex items-center")}>
                     <Plus className="w-4 h-4 mr-2" /> Add Service
-                  </button>
                 </DialogTrigger>
                   <DialogContent className="glass-card border-white/10 text-white">
                     <DialogHeader>
@@ -305,10 +303,8 @@ export default function Settings() {
                   </div>
                 </div>
                 <Dialog open={isBudgetOpen} onOpenChange={setIsBudgetOpen}>
-                  <DialogTrigger asChild>
-                  <button type="button" className={cn(buttonVariants({ variant: 'outline' }), "bg-white/5 text-white hover:bg-white/10 border border-white/10 rounded-xl px-4 py-2 flex items-center")}>
+                  <DialogTrigger className={cn(buttonVariants({ variant: 'outline' }), "bg-white/5 text-white hover:bg-white/10 border border-white/10 rounded-xl px-4 py-2 flex items-center")}>
                     <Plus className="w-4 h-4 mr-2" /> Add Category
-                  </button>
                 </DialogTrigger>
                   <DialogContent className="glass-card border-white/10 text-white">
                     <DialogHeader>
