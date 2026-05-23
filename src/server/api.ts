@@ -88,6 +88,38 @@ router.post("/transactions", authMiddleware, (req: any, res) => {
   res.json({ id });
 });
 
+router.get("/budgets", authMiddleware, (req: any, res) => {
+  const db = getDb();
+  const stmt = db.prepare("SELECT * FROM budgets WHERE user_id = ?");
+  const rows = stmt.all(req.userId);
+  res.json({ budgets: rows });
+});
+
+router.post("/budgets", authMiddleware, (req: any, res) => {
+  const { category, limit_amount } = req.body;
+  const db = getDb();
+  const id = uuidv4();
+  const stmt = db.prepare("INSERT INTO budgets (id, user_id, category, limit_amount) VALUES (?, ?, ?, ?)");
+  stmt.run(id, req.userId, category, limit_amount);
+  res.json({ id, category, limit_amount });
+});
+
+router.get("/subscriptions", authMiddleware, (req: any, res) => {
+  const db = getDb();
+  const stmt = db.prepare("SELECT * FROM subscriptions WHERE user_id = ?");
+  const rows = stmt.all(req.userId);
+  res.json({ subscriptions: rows });
+});
+
+router.post("/subscriptions", authMiddleware, (req: any, res) => {
+  const { name, amount, billing_cycle, next_billing_date } = req.body;
+  const db = getDb();
+  const id = uuidv4();
+  const stmt = db.prepare("INSERT INTO subscriptions (id, user_id, name, amount, billing_cycle, next_billing_date) VALUES (?, ?, ?, ?, ?, ?)");
+  stmt.run(id, req.userId, name, amount, billing_cycle, next_billing_date || new Date().toISOString());
+  res.json({ id, name, amount, billing_cycle, next_billing_date });
+});
+
 router.post("/receipt", authMiddleware, async (req: any, res) => {
   if (!req.file) return res.status(400).json({ error: "No image provided" });
   

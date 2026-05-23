@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/src/context/AuthContext';
 import { Home, PieChart, CreditCard, Camera, Settings, LogOut, Bot, Menu, X } from 'lucide-react';
@@ -12,6 +12,19 @@ export default function Layout() {
   const location = useLocation();
   const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isAiPanelOpen, setAiPanelOpen] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    setIsOnline(navigator.onLine);
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const navItems = [
     { name: 'Dashboard', path: '/', icon: Home },
@@ -61,11 +74,14 @@ export default function Layout() {
 
         <div className="p-4 border-t border-border/20">
           <div className="flex items-center gap-3 mb-4 px-2">
-            <Avatar className="h-10 w-10 border border-primary/50">
-              <AvatarFallback className="bg-primary/20 text-primary">
-                {user?.name?.charAt(0) || 'U'}
-              </AvatarFallback>
-            </Avatar>
+            <div className="relative">
+              <Avatar className="h-10 w-10 border border-primary/50">
+                <AvatarFallback className="bg-primary/20 text-primary">
+                  {user?.name?.charAt(0) || 'U'}
+                </AvatarFallback>
+              </Avatar>
+              <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-background ${isOnline ? 'bg-emerald-400' : 'bg-red-400'}`} title={isOnline ? 'Online' : 'Offline'}></span>
+            </div>
             <div className="flex flex-col truncate">
               <span className="text-sm font-medium truncate">{user?.name}</span>
               <span className="text-xs text-muted-foreground truncate">{user?.email}</span>

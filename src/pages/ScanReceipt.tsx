@@ -4,9 +4,11 @@ import { Upload, FileText, CheckCircle2, Loader2, Sparkles } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/src/context/AuthContext';
+import { useCurrency } from '@/src/context/CurrencyContext';
 
 export default function ScanReceipt() {
   const { token } = useAuth();
+  const { formatAmount } = useCurrency();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -53,6 +55,7 @@ export default function ScanReceipt() {
               date: data.date
             })
          });
+         window.dispatchEvent(new Event('transactionAdded'));
       }
     } catch (e) {
       console.error(e);
@@ -129,7 +132,7 @@ export default function ScanReceipt() {
                 </div>
                 <div className="glass p-4 rounded-xl border border-white/5 flex justify-between items-center">
                   <span className="text-muted-foreground text-sm">Amount Detected</span>
-                  <span className="font-bold text-xl text-emerald-400">${result.totalAmount}</span>
+                  <span className="font-bold text-xl text-emerald-400">{formatAmount(result.totalAmount)}</span>
                 </div>
                 <div className="glass p-4 rounded-xl border border-white/5 flex justify-between items-center">
                   <span className="text-muted-foreground text-sm">Suggested Category</span>

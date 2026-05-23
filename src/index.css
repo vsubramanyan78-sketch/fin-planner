@@ -178,6 +178,70 @@
 
 @custom-variant dark (&:is(.dark *));
 
+:root {
+  --background: oklch(1 0 0);
+}
+
+.frosted-glass {
+  --background: oklch(0.985 0 0); /* slighly darker white */
+  --foreground: oklch(0.145 0 0);
+  background-color: #f8fafc !important;
+}
+
+.frosted-glass .text-white {
+  color: #0f172a !important;
+}
+
+.frosted-glass .text-white\/40,
+.frosted-glass .text-white\/50,
+.frosted-glass .text-white\/60,
+.frosted-glass .text-white\/70,
+.frosted-glass .text-white\/80,
+.frosted-glass .text-white\/90 {
+  color: rgba(15, 23, 42, 0.7) !important;
+}
+
+.frosted-glass .bg-white\/5 {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+}
+
+.frosted-glass .border-white\/10 {
+  border-color: rgba(0, 0, 0, 0.1) !important;
+}
+
+.frosted-glass .glass {
+  background: rgba(255, 255, 255, 0.7) !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+.frosted-glass .glass-card {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.5) 100%) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04) !important;
+}
+
+.frosted-glass .bg-\[\#0a0a0f\]\/90,
+.frosted-glass .bg-\[\#020203\]\/90 {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  border-color: rgba(0, 0, 0, 0.1) !important;
+}
+
+.frosted-glass .text-cyan-400 {
+  color: #0ea5e9 !important; /* switch to sky-500 for legibility */
+}
+
+.frosted-glass .text-emerald-400 {
+  color: #10b981 !important; /* darker emerald */
+}
+
+.frosted-glass .text-purple-400 {
+  color: #8b5cf6 !important;
+}
+
+.frosted-glass .text-red-400 {
+  color: #ef4444 !important;
+}
+
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: 'Geist Variable', sans-serif;

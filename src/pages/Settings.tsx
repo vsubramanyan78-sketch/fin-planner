@@ -1,27 +1,96 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAuth } from '@/src/context/AuthContext';
-import { User, Bell, Shield, Repeat, Plus } from 'lucide-react';
+import { useCurrency } from '@/src/context/CurrencyContext';
+import { useTheme } from '@/src/context/ThemeContext';
+import { User, Bell, Shield, Repeat, Plus, PieChart, Sun, Moon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-const mockSubscriptions = [
-  { id: 1, name: 'Netflix Premium', amount: 19.99, date: '12th', status: 'active', color: 'bg-red-400' },
-  { id: 2, name: 'Adobe Creative Cloud', amount: 54.99, date: '15th', status: 'active', color: 'bg-purple-400' },
-  { id: 3, name: 'OpenAI API', amount: 30.00, date: '1st', status: 'active', color: 'bg-emerald-400' },
-  { id: 4, name: 'Gym Membership', amount: 45.00, date: '28th', status: 'paused', color: 'bg-cyan-400' },
-];
+const mockSubscriptions: any[] = [];
 
 export default function Settings() {
-  const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'general' | 'subscriptions'>('general');
+  const { user, logout, token } = useAuth();
+  const { formatAmount } = useCurrency();
+  const [activeTab, setActiveTab] = useState<'general' | 'subscriptions' | 'budgets'>('general');
+  const [subscriptions, setSubscriptions] = useState<any[]>([]);
+  const [budgets, setBudgets] = useState<any[]>([]);
+  
+  // New sub state
+  const [isSubOpen, setIsSubOpen] = useState(false);
+  const [subName, setSubName] = useState('');
+  const [subAmount, setSubAmount] = useState('');
+  const [subCycle, setSubCycle] = useState('monthly');
+  
+  // New budget state
+  const [isBudgetOpen, setIsBudgetOpen] = useState(false);
+  const [budgetCat, setBudgetCat] = useState('');
+  const [budgetLimit, setBudgetLimit] = useState('');
 
-  const totalMonthly = mockSubscriptions.filter(s => s.status === 'active').reduce((acc, curr) => acc + curr.amount, 0);
+  useEffect(() => {
+    fetch('/api/subscriptions', { headers: { 'Authorization': `Bearer ${token}` }})
+      .then(r => r.json())
+      .then(d => setSubscriptions(d.subscriptions || []));
+      
+    fetch('/api/budgets', { headers: { 'Authorization': `Bearer ${token}` }})
+      .then(r => r.json())
+      .then(d => setBudgets(d.budgets || []));
+  }, [token]);
+
+  const handleAddSubscription = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!subName || !subAmount) return;
+    const res = await fetch('/api/subscriptions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ name: subName, amount: Number(subAmount), billing_cycle: subCycle, next_billing_date: new Date().toISOString() })
+    });
+    if (res.ok) {
+      const newSub = await res.json();
+      setSubscriptions([newSub, ...subscriptions]);
+      setIsSubOpen(false);
+      setSubName('');
+      setSubAmount('');
+    }
+  };
+
+  const handleAddBudget = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!budgetCat || !budgetLimit) return;
+    const res = await fetch('/api/budgets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ category: budgetCat, limit_amount: Number(budgetLimit) })
+    });
+    if (res.ok) {
+      const newBudget = await res.json();
+      setBudgets([...budgets, newBudget]);
+      setIsBudgetOpen(false);
+      setBudgetCat('');
+      setBudgetLimit('');
+    }
+  };
+
+  const totalMonthly = subscriptions.filter(s => s.billing_cycle === 'monthly').reduce((acc, curr) => acc + curr.amount, 0) + (subscriptions.filter(s => s.billing_cycle === 'yearly').reduce((acc, curr) => acc + curr.amount, 0) / 12);
+
+  const { theme, toggleTheme } = useTheme();
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-4xl relative pb-20">
+      {/* Floating Theme Switcher */}
+      <div className="fixed bottom-6 right-6 z-50">
+        <button
+          onClick={toggleTheme}
+          className="bg-purple-500/10 backdrop-blur-xl border border-white/10 p-4 rounded-full shadow-[0_8px_32px_rgba(0,0,0,0.3)] hover:bg-white/10 transition-all flex items-center justify-center group"
+          title={`Switch to ${theme === 'neon-dark' ? 'Frosted Glass' : 'Neon Dark'} theme`}
+        >
+          {theme === 'neon-dark' ? <Sun className="w-6 h-6 text-yellow-400 group-hover:rotate-45 transition-transform" /> : <Moon className="w-6 h-6 text-purple-400 group-hover:-rotate-12 transition-transform" />}
+        </button>
+      </div>
+
       <div>
         <h2 className="text-3xl font-display font-bold">System Configuration</h2>
         <p className="text-muted-foreground mt-1">Manage your NeuroFin operational parameters.</p>
@@ -39,6 +108,12 @@ export default function Settings() {
           className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'subscriptions' ? 'bg-cyan-400 border border-cyan-400 text-black shadow-[0_0_15px_rgba(34,211,238,0.4)]' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
         >
           Subscriptions
+        </button>
+        <button
+          onClick={() => setActiveTab('budgets')}
+          className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'budgets' ? 'bg-cyan-400 border border-cyan-400 text-black shadow-[0_0_15px_rgba(34,211,238,0.4)]' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
+        >
+          Budgets
         </button>
       </div>
 
@@ -124,7 +199,7 @@ export default function Settings() {
               </CardContent>
             </Card>
           </motion.div>
-        ) : (
+        ) : activeTab === 'subscriptions' ? (
           <motion.div key="subscriptions" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="grid gap-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <Card className="glass-card border-none bg-gradient-to-br from-cyan-400/10 to-transparent">
@@ -132,8 +207,8 @@ export default function Settings() {
                   <CardTitle className="text-sm font-medium text-cyan-400/80 tracking-widest uppercase">Fixed Monthly Cost</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-4xl font-bold font-mono text-cyan-400">${totalMonthly.toFixed(2)}</div>
-                  <p className="text-xs text-white/50 mt-2">Across {mockSubscriptions.filter(s => s.status === 'active').length} active services</p>
+                  <div className="text-4xl font-bold font-mono text-cyan-400">{formatAmount(totalMonthly)}</div>
+                  <p className="text-xs text-white/50 mt-2">Across {subscriptions.filter(s => s.billing_cycle === 'monthly').length + subscriptions.filter(s => s.billing_cycle === 'yearly').length} active services</p>
                 </CardContent>
               </Card>
             </div>
@@ -149,37 +224,136 @@ export default function Settings() {
                     <CardDescription className="text-white/50">Manage your active subscriptions.</CardDescription>
                   </div>
                 </div>
-                <Button className="bg-white/5 text-white hover:bg-white/10 border border-white/10 rounded-xl">
-                  <Plus className="w-4 h-4 mr-2" /> Add Service
-                </Button>
+                <Dialog open={isSubOpen} onOpenChange={setIsSubOpen}>
+                  <Button type="button" onClick={() => setIsSubOpen(true)} className="bg-white/5 text-white hover:bg-white/10 border border-white/10 rounded-xl">
+                    <Plus className="w-4 h-4 mr-2" /> Add Service
+                  </Button>
+                  <DialogContent className="glass-card border-white/10 text-white">
+                    <DialogHeader>
+                      <DialogTitle>Add Subscription</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={handleAddSubscription} className="space-y-4 pt-4">
+                      <div className="space-y-2">
+                        <Label>Name</Label>
+                        <Input value={subName} onChange={e => setSubName(e.target.value)} placeholder="e.g. Netflix" className="bg-white/5 border-white/10 text-white" required />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Amount</Label>
+                        <Input type="number" step="0.01" value={subAmount} onChange={e => setSubAmount(e.target.value)} placeholder="0.00" className="bg-white/5 border-white/10 text-white" required />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Billing Cycle</Label>
+                        <select value={subCycle} onChange={(e) => setSubCycle(e.target.value)} className="flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring focus:border-cyan-400 focus:ring-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-50 text-white">
+                            <option value="monthly" className="bg-[#0f172a]">Monthly</option>
+                            <option value="yearly" className="bg-[#0f172a]">Yearly</option>
+                        </select>
+                      </div>
+                      <Button type="submit" className="w-full bg-cyan-500 text-black hover:bg-cyan-400 font-bold">Add Subscription</Button>
+                    </form>
+                  </DialogContent>
+                </Dialog>
               </CardHeader>
               <CardContent>
                 <div className="divide-y divide-white/5">
-                  {mockSubscriptions.map((sub, idx) => (
+                  {subscriptions.length === 0 ? (
+                    <div className="py-8 text-center text-white/50 text-sm">
+                      No active subscriptions detected.
+                    </div>
+                  ) : (
+                    subscriptions.map((sub, idx) => (
                     <motion.div 
+                      key={sub.id || idx}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: idx * 0.05 }}
-                      key={sub.id} 
                       className="py-4 flex items-center justify-between hover:bg-white/5 transition-colors -mx-6 px-6"
                     >
                       <div className="flex items-center gap-4">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-lg bg-white/5 border border-white/10 font-bold text-lg font-display ${sub.status === 'paused' ? 'opacity-50' : ''}`}>
-                          {sub.name.charAt(0)}
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-lg bg-white/5 border border-white/10 font-bold text-lg font-display`}>
+                          {sub.name?.charAt(0)}
                         </div>
                         <div>
-                          <p className={`font-semibold ${sub.status === 'paused' ? 'text-white/50 line-through' : 'text-white/90'}`}>{sub.name}</p>
+                          <p className={`font-semibold text-white/90`}>{sub.name}</p>
                           <div className="flex items-center gap-2 text-xs">
-                            <span className="text-white/40">Billed on {sub.date}</span>
-                            {sub.status === 'paused' && <span className="px-2 py-0.5 rounded border border-white/10 bg-white/5 text-white/40 uppercase tracking-widest text-[9px]">Paused</span>}
+                            <span className="text-white/40">Billed {sub.billing_cycle}</span>
                           </div>
                         </div>
                       </div>
-                      <div className={`font-bold font-mono ${sub.status === 'paused' ? 'text-white/30' : 'text-cyan-400'}`}>
-                        ${sub.amount.toFixed(2)}
+                      <div className={`font-bold font-mono text-cyan-400`}>
+                        {formatAmount(sub.amount)}
                       </div>
                     </motion.div>
-                  ))}
+                  )))}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        ) : (
+          <motion.div key="budgets" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="grid gap-6">
+            <Card className="glass-card border-none">
+              <CardHeader className="flex flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-emerald-500/20 flex flex-col items-center justify-center text-emerald-400 border border-emerald-500/30 shadow-[0_0_15px_rgba(52,211,153,0.2)]">
+                    <PieChart className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-white/90">Budget Thresholds</CardTitle>
+                    <CardDescription className="text-white/50">Manage your spending limits per category.</CardDescription>
+                  </div>
+                </div>
+                <Dialog open={isBudgetOpen} onOpenChange={setIsBudgetOpen}>
+                  <Button type="button" onClick={() => setIsBudgetOpen(true)} className="bg-white/5 text-white hover:bg-white/10 border border-white/10 rounded-xl">
+                    <Plus className="w-4 h-4 mr-2" /> Add Category
+                  </Button>
+                  <DialogContent className="glass-card border-white/10 text-white">
+                    <DialogHeader>
+                      <DialogTitle>Add Budget Threshold</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={handleAddBudget} className="space-y-4 pt-4">
+                      <div className="space-y-2">
+                        <Label>Category</Label>
+                        <Input value={budgetCat} onChange={e => setBudgetCat(e.target.value)} placeholder="e.g. Travel" className="bg-white/5 border-white/10 text-white" required />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Monthly Limit Amount</Label>
+                        <Input type="number" step="0.01" value={budgetLimit} onChange={e => setBudgetLimit(e.target.value)} placeholder="0.00" className="bg-white/5 border-white/10 text-white" required />
+                      </div>
+                      <Button type="submit" className="w-full bg-cyan-500 text-black hover:bg-cyan-400 font-bold">Add Threshold</Button>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              </CardHeader>
+              <CardContent>
+                <div className="divide-y divide-white/5">
+                  {budgets.length === 0 ? (
+                    <div className="py-8 text-center text-white/50 text-sm">
+                      No custom budgets set yet.
+                    </div>
+                  ) : (
+                    budgets.map((budget, idx) => (
+                    <motion.div 
+                      key={budget.id || idx}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.05 }}
+                      className="py-4 flex items-center justify-between hover:bg-white/5 transition-colors -mx-6 px-6"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-lg bg-white/5 border border-white/10 font-bold text-lg font-display`}>
+                          {budget.category?.charAt(0)}
+                        </div>
+                        <div>
+                          <p className={`font-semibold text-white/90`}>{budget.category}</p>
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-white/40">Monthly Limit</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className={`font-bold font-mono text-cyan-400`}>
+                        {formatAmount(budget.limit_amount)}
+                      </div>
+                    </motion.div>
+                  )))}
                 </div>
               </CardContent>
             </Card>

@@ -4,11 +4,13 @@ import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { ArrowUpRight, ArrowDownRight, Wallet, Download, Mic, MicOff, Check, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
+import { useCurrency } from '@/src/context/CurrencyContext';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function Transactions() {
   const [data, setData] = useState<any[]>([]);
   const { token } = useAuth();
+  const { formatAmount } = useCurrency();
   const [loading, setLoading] = useState(true);
   
   // Voice input state
@@ -47,12 +49,41 @@ export default function Transactions() {
         
         recognitionRef.current.onend = () => {
           setIsListening(false);
-          // If we have a transcript, simulate adding a transaction after a brief pause
+          // If we have a transcript, parse it and try to save
           if (transcript.length > 0) {
              setVoiceSuccess(true);
+             
+             // Extract amount via rough parsing for demo
+             const amtMatch = transcript.match(/\d+(\.\d+)?/);
+             const amt = amtMatch ? parseFloat(amtMatch[0]) : 15.0; // fallback amount
+             
+             fetch('/api/transactions', {
+                method: 'POST',
+                headers: { 
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  amount: amt,
+                  type: 'expense',
+                  title: 'Voice Entry',
+                  category: 'General',
+                  date: new Date().toISOString()
+                })
+             }).then(() => {
+                 window.dispatchEvent(new Event('transactionAdded'));
+             }).catch(console.error);
+
              setTimeout(() => {
                setVoiceSuccess(false);
                setTranscript('');
+               
+               // Reload local transactions
+               fetch('/api/transactions', {
+                 headers: { 'Authorization': `Bearer ${token}` }
+               }).then(r => r.json()).then(res => {
+                 setData(res.transactions || []);
+               });
              }, 3000);
           }
         };
@@ -148,7 +179,7 @@ export default function Transactions() {
                     </div>
                   </div>
                   <div className={`font-bold font-mono ${tx.type === 'income' ? 'text-emerald-500' : 'text-foreground'}`}>
-                    {tx.type === 'income' ? '+' : '-'}${tx.amount.toFixed(2)}
+                    {tx.type === 'income' ? '+' : '-'}{formatAmount(tx.amount)}
                   </div>
                 </motion.div>
               ))
