@@ -196,9 +196,15 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="glass-card border-none">
           <CardContent className="flex items-center gap-4 py-5 px-6">
-            <div className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 ${hasSavingsStreak ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'bg-white/5 text-white/20 border border-white/10'}`}>
-               <Star className="w-7 h-7" />
-            </div>
+            <div className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 ${hasSavingsStreak ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-white/5 text-white/20 border border-white/10'}`}>
+                <motion.div
+                    animate={hasSavingsStreak ? { scale: [1, 1.1, 1], rotate: [0, 5, -5, 0] } : {}}
+                    transition={{ duration: 0.5, repeat: Infinity, repeatDelay: 2 }}
+                    className={hasSavingsStreak ? 'shadow-[0_0_20px_rgba(16,185,129,0.5)] rounded-full' : ''}
+                >
+                    <Star className="w-7 h-7" />
+                </motion.div>
+             </div>
             <div>
                <h4 className={`font-bold text-lg ${hasSavingsStreak ? 'text-white' : 'text-white/40'}`}>Savings Streak</h4>
                <p className="text-xs text-white/50">Saved over 10% of total income</p>
@@ -208,9 +214,15 @@ export default function Dashboard() {
 
         <Card className="glass-card border-none">
           <CardContent className="flex items-center gap-4 py-5 px-6">
-            <div className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 ${hasBudgetMaster ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.3)]' : 'bg-white/5 text-white/20 border border-white/10'}`}>
-               <Medal className="w-7 h-7" />
-            </div>
+            <div className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 ${hasBudgetMaster ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' : 'bg-white/5 text-white/20 border border-white/10'}`}>
+                <motion.div
+                    animate={hasBudgetMaster ? { scale: [1, 1.1, 1], rotate: [0, 5, -5, 0] } : {}}
+                    transition={{ duration: 0.5, repeat: Infinity, repeatDelay: 2 }}
+                    className={hasBudgetMaster ? 'shadow-[0_0_20px_rgba(168,85,247,0.5)] rounded-full' : ''}
+                >
+                    <Medal className="w-7 h-7" />
+                </motion.div>
+             </div>
             <div>
                <h4 className={`font-bold text-lg ${hasBudgetMaster ? 'text-white' : 'text-white/40'}`}>Budget Master</h4>
                <p className="text-xs text-white/50">Stayed within all budget thresholds</p>
@@ -220,9 +232,15 @@ export default function Dashboard() {
 
         <Card className="glass-card border-none">
           <CardContent className="flex items-center gap-4 py-5 px-6">
-            <div className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 ${hasBigSpender ? 'bg-cyan-400/20 text-cyan-400 border border-cyan-400/30 shadow-[0_0_15px_rgba(34,211,238,0.3)]' : 'bg-white/5 text-white/20 border border-white/10'}`}>
-               <Trophy className="w-7 h-7" />
-            </div>
+            <div className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 ${hasBigSpender ? 'bg-cyan-400/20 text-cyan-400 border border-cyan-400/30' : 'bg-white/5 text-white/20 border border-white/10'}`}>
+                <motion.div
+                    animate={hasBigSpender ? { scale: [1, 1.1, 1], rotate: [0, 5, -5, 0] } : {}}
+                    transition={{ duration: 0.5, repeat: Infinity, repeatDelay: 2 }}
+                    className={hasBigSpender ? 'shadow-[0_0_20px_rgba(34,211,238,0.5)] rounded-full' : ''}
+                >
+                    <Trophy className="w-7 h-7" />
+                </motion.div>
+             </div>
             <div>
                <h4 className={`font-bold text-lg ${hasBigSpender ? 'text-white' : 'text-white/40'}`}>Big Spender</h4>
                <p className="text-xs text-white/50">Logged over $5K in expenses</p>

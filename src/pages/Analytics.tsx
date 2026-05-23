@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { CalendarHeatmap } from '@/src/components/CalendarHeatmap';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { motion } from 'motion/react';
 import { Sparkles, TrendingUp, TrendingDown, Target, Download, Loader2 } from 'lucide-react';
@@ -264,9 +265,21 @@ export default function Analytics() {
         </Card>
         </motion.div>
       </div>
+      
+      {/* Heatmap Section */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }}>
+        <Card className="glass-card border-none">
+          <CardHeader>
+            <CardTitle className="text-white/80">Transaction Density Heatmap</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CalendarHeatmap transactions={transactions} />
+          </CardContent>
+        </Card>
+      </motion.div>
 
       {/* Budget Categories Progress */}
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}>
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }}>
       <Card className="glass-card border-none">
         <CardHeader>
           <CardTitle className="text-white/80">Active Budgets Utilization</CardTitle>

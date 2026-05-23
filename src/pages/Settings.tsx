@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
 import { useAuth } from '@/src/context/AuthContext';
 import { useCurrency } from '@/src/context/CurrencyContext';
 import { useTheme } from '@/src/context/ThemeContext';
@@ -225,9 +226,11 @@ export default function Settings() {
                   </div>
                 </div>
                 <Dialog open={isSubOpen} onOpenChange={setIsSubOpen}>
-                  <Button type="button" onClick={() => setIsSubOpen(true)} className="bg-white/5 text-white hover:bg-white/10 border border-white/10 rounded-xl">
+                  <DialogTrigger asChild>
+                  <button type="button" className={cn(buttonVariants({ variant: 'outline' }), "bg-white/5 text-white hover:bg-white/10 border border-white/10 rounded-xl px-4 py-2 flex items-center")}>
                     <Plus className="w-4 h-4 mr-2" /> Add Service
-                  </Button>
+                  </button>
+                </DialogTrigger>
                   <DialogContent className="glass-card border-white/10 text-white">
                     <DialogHeader>
                       <DialogTitle>Add Subscription</DialogTitle>
@@ -302,9 +305,11 @@ export default function Settings() {
                   </div>
                 </div>
                 <Dialog open={isBudgetOpen} onOpenChange={setIsBudgetOpen}>
-                  <Button type="button" onClick={() => setIsBudgetOpen(true)} className="bg-white/5 text-white hover:bg-white/10 border border-white/10 rounded-xl">
+                  <DialogTrigger asChild>
+                  <button type="button" className={cn(buttonVariants({ variant: 'outline' }), "bg-white/5 text-white hover:bg-white/10 border border-white/10 rounded-xl px-4 py-2 flex items-center")}>
                     <Plus className="w-4 h-4 mr-2" /> Add Category
-                  </Button>
+                  </button>
+                </DialogTrigger>
                   <DialogContent className="glass-card border-white/10 text-white">
                     <DialogHeader>
                       <DialogTitle>Add Budget Threshold</DialogTitle>
