@@ -63,8 +63,8 @@ export default function AiAssistantPanel({ onClose }: { onClose: () => void }) {
       >
         <div className="p-4 border-b border-border/20 flex items-center justify-between bg-primary/5">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center border border-primary/50 neon-glow-primary">
-              <Bot className="w-5 h-5 text-primary" />
+            <div className="w-10 h-10 rounded-full bg-cyan-400/20 flex items-center justify-center border border-cyan-400/50 shadow-[0_0_15px_rgba(34,211,238,0.3)]">
+              <Bot className="w-5 h-5 text-cyan-400" />
             </div>
             <div>
               <h3 className="font-display font-bold text-lg">Neuro AI</h3>

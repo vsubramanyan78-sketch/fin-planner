@@ -100,7 +100,7 @@ export default function ScanReceipt() {
             </div>
 
             <Button 
-              className="w-full mt-4 bg-gradient-to-r from-primary to-neon-cyan hover:opacity-90 neon-glow-primary"
+              className="w-full mt-4 bg-gradient-to-tr from-cyan-400 to-purple-500 hover:opacity-90 shadow-[0_0_20px_rgba(34,211,238,0.3)] text-white border-transparent"
               disabled={!file || loading}
               onClick={processReceipt}
             >

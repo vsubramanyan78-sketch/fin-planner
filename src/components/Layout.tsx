@@ -31,8 +31,8 @@ export default function Layout() {
       {/* Sidebar - Desktop */}
       <aside className="hidden md:flex w-64 flex-col border-r border-border/20 glass shadow-2xl relative z-10">
         <div className="p-6">
-          <h1 className="text-2xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-r from-neon-cyan to-primary flex items-center gap-2">
-            <Bot className="w-8 h-8 text-neon-cyan" />
+          <h1 className="text-2xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500 flex items-center gap-2">
+            <Bot className="w-8 h-8 text-cyan-400" />
             NeuroFin
           </h1>
         </div>
@@ -47,7 +47,7 @@ export default function Layout() {
                   whileTap={{ scale: 0.98 }}
                   className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                     isActive 
-                      ? 'bg-primary/20 text-primary border border-primary/30 neon-glow-primary' 
+                      ? 'bg-cyan-400/20 text-cyan-400 border border-cyan-400/30 flex shadow-[0_0_15px_rgba(34,211,238,0.2)]' 
                       : 'text-muted-foreground hover:bg-white/5 hover:text-white'
                   }`}
                 >
@@ -82,7 +82,7 @@ export default function Layout() {
         
         {/* Mobile Header */}
         <header className="md:hidden flex items-center justify-between p-4 border-b border-border/20 glass z-20">
-          <h1 className="text-xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-r from-neon-cyan to-primary">
+          <h1 className="text-xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500">
             NeuroFin
           </h1>
           <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(!isMobileMenuOpen)}>
@@ -135,7 +135,7 @@ export default function Layout() {
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
           onClick={() => setAiPanelOpen(true)}
-          className="absolute bottom-6 right-6 md:bottom-10 md:right-10 w-14 h-14 bg-gradient-to-tr from-primary to-neon-purple rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(113,44,255,0.6)] cursor-pointer z-40 border border-white/20"
+          className="absolute bottom-6 right-6 md:bottom-10 md:right-10 w-14 h-14 bg-gradient-to-tr from-cyan-400 to-purple-600 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(34,211,238,0.4)] cursor-pointer z-40 border border-white/20"
         >
           <Bot className="w-6 h-6 text-white" />
         </motion.button>
