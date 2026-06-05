@@ -449,6 +449,52 @@ export default function Dashboard() {
     return () => window.removeEventListener('transactionAdded', fetchDashboardData);
   }, [fetchDashboardData]);
 
+  const handleAutoRebalanceBudgets = async () => {
+    try {
+      const cats = Array.from(new Set([
+        ...["Food", "Utilities", "Entertainment", "Housing", "Transport", "Shopping", "Investment"],
+        ...(budgets.map((b: any) => b.category))
+      ]));
+      
+      let itemsRebalanced = 0;
+      
+      for (const cat of cats) {
+        // Calculate historical avg spending for category based on all our transactions
+        const catTx = transactions.filter(t => t.type === 'expense' && t.category?.toLowerCase() === cat.toLowerCase());
+        const total = catTx.reduce((a,b) => a + b.amount, 0);
+        
+        let avgMonth = 500;
+        if (catTx.length > 0) {
+           avgMonth = Math.max(total / 6, 50); // assume 6 months data generally, set a floor limit
+        } else {
+           // fallback logic
+           avgMonth = cat === 'Housing' ? 1200 : cat === 'Food' ? 500 : 250;
+        }
+        
+        // Rebalance target is 5% buffer above average
+        const newTargetLimit = Math.round(avgMonth * 1.05);
+        
+        await fetch('/api/budgets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ category: cat, limit_amount: newTargetLimit })
+        });
+        itemsRebalanced++;
+      }
+      
+      setToastMessage(`Auto-Balanced ${itemsRebalanced} Category Limits based on AI Trajectory!`);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3500);
+      
+      // refresh budgets
+      fetch('/api/budgets', { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(bdata => setBudgets(bdata.budgets || []));
+    } catch(e) {
+      console.error(e);
+    }
+  };
+
   const formatMonth = (dateString: string) => {
     return new Date(dateString).toLocaleString('default', { month: 'short' });
   };
@@ -1641,7 +1687,16 @@ export default function Dashboard() {
               
               {/* Category-level Budget Progress Bars */}
               <div className="lg:col-span-7 space-y-4">
-                <h4 className="text-xs font-mono text-cyan-400 uppercase tracking-widest font-bold">Category Budgets</h4>
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-mono text-cyan-400 uppercase tracking-widest font-bold">Category Budgets</h4>
+                  <Button 
+                    onClick={handleAutoRebalanceBudgets}
+                    size="sm"
+                    className="h-7 text-[10px] uppercase tracking-wider font-bold bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 p-2"
+                  >
+                    Auto-Rebalance Limits
+                  </Button>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {Array.from(new Set([
                     ...["Food", "Utilities", "Entertainment", "Housing", "Transport", "Shopping", "Investment"],

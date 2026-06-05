@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { CalendarHeatmap } from '@/src/components/CalendarHeatmap';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import { motion } from 'motion/react';
-import { Sparkles, TrendingUp, TrendingDown, Target, Download, Loader2 } from 'lucide-react';
+import { Sparkles, TrendingUp, TrendingDown, Target, Download, Loader2, Play, Square } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { useCurrency } from '@/src/context/CurrencyContext';
 import jsPDF from 'jspdf';
@@ -78,7 +78,42 @@ export default function Analytics() {
   const [budgets, setBudgets] = useState<any[]>([]);
   const [downloading, setDownloading] = useState(false);
   const [spendingInsight, setSpendingInsight] = useState<string>("Analyzing your latest spending velocity...");
+  const [isPlayingVoice, setIsPlayingVoice] = useState(false);
 
+  const toggleVoiceSummary = () => {
+    if (isPlayingVoice) {
+      window.speechSynthesis.cancel();
+      setIsPlayingVoice(false);
+      return;
+    }
+    
+    // Formulate a detailed summary based on data
+    const totalInc = transactions.filter(t => t.type === 'income').reduce((a,b) => a + b.amount, 0);
+    const totalOut = transactions.filter(t => t.type === 'expense').reduce((a,b) => a + b.amount, 0);
+    
+    let topCat = 'various categories';
+    if (transactions.length > 0) {
+      const catMap: Record<string, number> = {};
+      transactions.forEach(t => {
+        if(t.type === 'expense') catMap[t.category] = (catMap[t.category] || 0) + t.amount;
+      });
+      const sorted = Object.entries(catMap).sort((a,b) => b[1] - a[1]);
+      if(sorted.length > 0) topCat = sorted[0][0];
+    }
+    
+    const rate = totalInc > 0 ? ((totalInc - totalOut) / totalInc * 100).toFixed(1) : '0';
+    
+    const textToSpeak = `Here is your 6-month trend analysis. Your active spending logic has calculated a primary outflow velocity focused mostly on ${topCat}. Total outflow is ${formatAmount(totalOut)}. The AI reports: ${spendingInsight}. Overall, your savings rate is currently modeling at ${rate} percent based on the latest ledger snapshot.`;
+    
+    const utterance = new SpeechSynthesisUtterance(textToSpeak);
+    utterance.rate = 0.95;
+    utterance.pitch = 1.0;
+    utterance.onend = () => setIsPlayingVoice(false);
+    
+    window.speechSynthesis.speak(utterance);
+    setIsPlayingVoice(true);
+  };
+  
   // What-If Simulation State
   const [whatIfContribution, setWhatIfContribution] = useState(250);
   const [whatIfMilestone, setWhatIfMilestone] = useState('emergency');
@@ -148,7 +183,7 @@ export default function Analytics() {
     }
   };
 
-  const downloadPDF = () => {
+  const downloadPDF = async () => {
     setDownloading(true);
     try {
       const pdf = new jsPDF('p', 'mm', 'a4');
@@ -175,163 +210,57 @@ export default function Analytics() {
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(10);
       pdf.setTextColor(148, 163, 184); // slate 400
-      pdf.text('Statement Cycle: Current Month Rolling Summary', 15, 28);
+      pdf.text('Monthly Snapshot & Insights Report', 15, 28);
       pdf.text(`Printed: ${todayStr}`, 150, 28);
       
-      // Executive Account Info Section
-      let y = 55;
-      pdf.setFillColor(15, 23, 42);
-      pdf.setTextColor(15, 23, 42);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(12);
-      pdf.text('ACCOUNT SUMMARY NODE', 15, y);
+      let y = 50;
+
+      // Check if we can capture the chart and insight HTML
+      const chartEl = document.getElementById('main-bar-chart');
+      const insightEl = document.getElementById('ai-insight-box');
       
-      pdf.setDrawColor(226, 232, 240); // slate 200
-      pdf.setLineWidth(0.4);
-      pdf.line(15, y + 2, 195, y + 2);
-      
-      y += 10;
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(10);
-      pdf.setTextColor(100, 116, 139); // slate 505
-      pdf.text(`Client Owner:`, 15, y);
-      pdf.setTextColor(15, 23, 42);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(`${userName}`, 42, y);
-      
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(100, 116, 139);
-      pdf.text(`Client Node Email:`, 110, y);
-      pdf.setTextColor(15, 23, 42);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(`${userEmail}`, 145, y);
-      
-      // Ledger Performance Metrics
-      y += 15;
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(12);
-      pdf.setTextColor(15, 23, 42);
-      pdf.text('FINANCIAL VELOCITY METRICS', 15, y);
-      pdf.line(15, y + 2, 195, y + 2);
-      
-      y += 12;
-      const totalInflows = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
-      const totalOutflows = transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
-      const activeSavings = totalInflows - totalOutflows;
-      const savingsPercentage = totalInflows > 0 ? `${((activeSavings / totalInflows) * 100).toFixed(1)}%` : '0.0%';
-      
-      // Render clean metric cards
-      pdf.setFillColor(248, 250, 252); // slate 50
-      pdf.rect(15, y, 55, 22, 'F');
-      pdf.rect(75, y, 55, 22, 'F');
-      pdf.rect(135, y, 60, 22, 'F');
-      
-      pdf.setFontSize(8);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(100, 116, 139);
-      pdf.text('TOTAL INFLOWS', 20, y + 6);
-      pdf.text('TOTAL OUTFLOWS', 80, y + 6);
-      pdf.text('LEDGER NET SAVINGS', 140, y + 6);
-      
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(16, 185, 129); // green 500
-      pdf.text(formatAmount(totalInflows), 20, y + 15);
-      pdf.setTextColor(239, 68, 68); // red 500
-      pdf.text(formatAmount(totalOutflows), 80, y + 15);
-      pdf.setTextColor(15, 23, 42);
-      pdf.text(`${formatAmount(activeSavings)} (${savingsPercentage})`, 140, y + 15);
-      
-      // Budget threshold status table
-      y += 35;
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(12);
-      pdf.setTextColor(15, 23, 42);
-      pdf.text('BUDGET UTILIZATION TRACKING', 15, y);
-      pdf.line(15, y + 2, 195, y + 2);
-      
-      y += 10;
-      pdf.setFillColor(226, 232, 240); // header row background slate 200
-      pdf.rect(15, y, 180, 7, 'F');
-      pdf.setFontSize(9);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(15, 23, 42);
-      pdf.text('CATEGORY', 18, y + 5);
-      pdf.text('ACTUAL SPENT', 75, y + 5);
-      pdf.text('BUDGET LIMIT', 125, y + 5);
-      pdf.text('UTILIZATION STATUS', 165, y + 5);
-      
-      pdf.setFont('helvetica', 'normal');
-      budgetCategories.forEach((cat, idx) => {
-        y += 8;
-        // background zebra stripes
-        if (idx % 2 === 1) {
-          pdf.setFillColor(248, 250, 252);
-          pdf.rect(15, y, 180, 7, 'F');
-        }
-        pdf.setTextColor(15, 23, 42);
-        pdf.text(cat.name.toUpperCase(), 18, y + 5);
-        pdf.text(formatAmount(cat.spent), 75, y + 5);
-        pdf.text(formatAmount(cat.limit), 125, y + 5);
-        
-        const ratio = cat.limit > 0 ? (cat.spent / cat.limit) * 100 : 0;
-        if (ratio > 100) {
-          pdf.setTextColor(239, 68, 68);
-          pdf.text(`${ratio.toFixed(0)}% OVER`, 165, y + 5);
-        } else if (ratio >= 80) {
-          pdf.setTextColor(245, 158, 11);
-          pdf.text(`${ratio.toFixed(0)}% APPR`, 165, y + 5);
-        } else {
-          pdf.setTextColor(16, 185, 129);
-          pdf.text(`${ratio.toFixed(0)}% OK`, 165, y + 5);
-        }
-      });
-      
-      // Transaction ledger breakdown
-      y += 20;
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(12);
-      pdf.setTextColor(15, 23, 42);
-      pdf.text('RECENT ACTIVITY LEDGER NODES', 15, y);
-      pdf.line(15, y + 2, 195, y + 2);
-      
-      y += 10;
-      pdf.setFillColor(226, 232, 240);
-      pdf.rect(15, y, 180, 7, 'F');
-      pdf.setFontSize(9);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(15, 23, 42);
-      pdf.text('DATE', 18, y + 5);
-      pdf.text('MERCHANT / TITLE', 55, y + 5);
-      pdf.text('CATEGORY', 115, y + 5);
-      pdf.text('AMOUNT', 165, y + 5);
-      
-      pdf.setFont('helvetica', 'normal');
-      transactions.slice(0, 8).forEach((tx, idx) => {
-        y += 8;
-        const txDate = tx.date ? new Date(tx.date).toLocaleDateString() : 'N/A';
-        pdf.setTextColor(100, 116, 139);
-        pdf.text(txDate, 18, y + 5);
-        pdf.setTextColor(15, 23, 42);
-        pdf.text(tx.title || 'N/A', 55, y + 5);
-        pdf.text(tx.category || 'Other', 115, y + 5);
-        
-        if (tx.type === 'income') {
-          pdf.setTextColor(16, 185, 129);
-          pdf.text(`+${formatAmount(tx.amount)}`, 165, y + 5);
-        } else {
-          pdf.setTextColor(15, 23, 42);
-          pdf.text(`-${formatAmount(tx.amount)}`, 165, y + 5);
-        }
-      });
+      if (chartEl) {
+         const chartCanvas = await html2canvas(chartEl, { scale: 2, backgroundColor: '#0f172a' });
+         const chartImg = chartCanvas.toDataURL('image/jpeg', 0.8);
+         const imgWidth = 180;
+         const imgHeight = (chartCanvas.height * imgWidth) / chartCanvas.width;
+         
+         pdf.setFont('helvetica', 'bold');
+         pdf.setFontSize(12);
+         pdf.setTextColor(15, 23, 42);
+         pdf.text('MONTHLY SPENDING TRAJECTORY', 15, y);
+         y += 5;
+         
+         pdf.addImage(chartImg, 'JPEG', 15, y, imgWidth, imgHeight);
+         y += imgHeight + 15;
+      }
+
+      if (insightEl) {
+         const insightCanvas = await html2canvas(insightEl, { scale: 2, backgroundColor: '#0f172a' });
+         const insightImg = insightCanvas.toDataURL('image/jpeg', 0.8);
+         const imgWidth = 180;
+         const imgHeight = (insightCanvas.height * imgWidth) / insightCanvas.width;
+         
+         if (y + imgHeight > 280) {
+            pdf.addPage();
+            y = 20;
+         }
+
+         pdf.setFont('helvetica', 'bold');
+         pdf.setFontSize(12);
+         pdf.setTextColor(15, 23, 42);
+         pdf.text('NEURAL FORECASTS & INSIGHTS', 15, y);
+         y += 5;
+         
+         pdf.addImage(insightImg, 'JPEG', 15, y, imgWidth, imgHeight);
+      }
       
       // Footing note
-      y += 14;
       pdf.setFontSize(7);
       pdf.setTextColor(148, 163, 184);
-      pdf.text('NeuroFin Analytical Engine - Secure Ledger Cryptography Protocol Summary. Confidential document for personal account storage.', 16, y);
+      pdf.text('NeuroFin Analytical Engine - Extracted Monthly Snapshot.', 16, 290);
       
-      pdf.save(`neurofin_ledger_statement_${new Date().getFullYear()}_${new Date().getMonth() + 1}.pdf`);
+      pdf.save(`neurofin_monthly_report_${new Date().getFullYear()}_${new Date().getMonth() + 1}.pdf`);
     } catch (e) {
       console.error(e);
     } finally {
@@ -551,15 +480,30 @@ export default function Analytics() {
           <h2 className="text-3xl font-display font-bold text-white">Analytics & Insights</h2>
           <p className="text-white/50 mt-1">Neural analysis of your financial trajectories.</p>
         </div>
-        <Button 
-          variant="outline" 
-          onClick={downloadPDF} 
-          disabled={downloading}
-          className="bg-white/5 border-white/10 text-white hover:bg-white/10 rounded-xl max-w-fit"
-        >
-          {downloading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
-          Download PDF
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button 
+            variant="outline"
+            onClick={toggleVoiceSummary}
+            className={`border rounded-xl max-w-fit font-medium flex items-center shadow-lg transition-all ${
+              isPlayingVoice 
+                 ? "bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.2)] animate-pulse"
+                 : "bg-[#0b0c15] border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 shadow-[0_0_15px_rgba(34,211,238,0.15)]"
+            }`}
+          >
+            {isPlayingVoice ? <Square className="w-4 h-4 mr-2" /> : <Play className="w-4 h-4 mr-2 text-cyan-400" />}
+            {isPlayingVoice ? 'Stop AI Summary' : 'Play AI Summary'}
+          </Button>
+
+          <Button 
+            variant="outline" 
+            onClick={downloadPDF} 
+            disabled={downloading}
+            className="bg-white/5 border-white/10 text-white hover:bg-white/10 rounded-xl max-w-fit shadow-lg"
+          >
+            {downloading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+            Download Monthly Report
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -591,7 +535,7 @@ export default function Analytics() {
           </Card>
         </motion.div>
 
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} whileHover={{ y: -5 }}>
+        <motion.div id="ai-insight-box" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} whileHover={{ y: -5 }}>
            <Card className="glass-card border-none bg-gradient-to-br from-cyan-400/10 to-purple-500/10 border-cyan-400/20 shadow-[0_0_20px_rgba(34,211,238,0.1)]">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-cyan-400 flex items-center gap-2 uppercase tracking-widest">
@@ -791,7 +735,7 @@ export default function Analytics() {
         </motion.div>
 
         {/* 6-Month Spending Trends BarChart */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}>
+        <motion.div id="main-bar-chart" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}>
         <Card className="glass-card border-none h-full bg-gradient-to-tr from-[#0b0c15] to-[#121323]">
           <CardHeader>
             <CardTitle className="text-white/80">6-Month Spending Trends</CardTitle>

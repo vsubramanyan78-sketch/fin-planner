@@ -8,6 +8,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { CalendarHeatmap } from '@/src/components/CalendarHeatmap';
 
 interface Subscription {
   id: string;
@@ -306,6 +307,24 @@ export default function Subscriptions() {
           </Card>
         </motion.div>
       </div>
+
+      {/* Calendar Heatmap View for Subscriptions */}
+      <Card className="glass-card border-none overflow-hidden">
+        <CardHeader className="pb-3 border-b border-white/5">
+          <CardTitle className="text-base font-bold text-white font-display flex items-center gap-2">
+            <CalendarDays className="w-5 h-5 text-cyan-400" />
+            Monthly Cash Flow Obligations
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-6 overflow-x-auto min-w-full">
+           <div className="min-w-[600px] max-w-4xl mx-auto">
+             <CalendarHeatmap transactions={activeSubs.map(s => ({
+                date: s.next_billing_date,
+                amount: s.amount
+             }))} />
+           </div>
+        </CardContent>
+      </Card>
 
       {/* Main Table Grid List */}
       <Card className="glass-card border-none overflow-hidden">
