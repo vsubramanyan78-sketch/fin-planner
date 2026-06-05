@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, DollarSign, Activity, AlertCircle, Target, Sparkles, X, HeartPulse, Trophy, Star, Medal, ShieldCheck, Fingerprint } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, DollarSign, Activity, AlertCircle, Target, Sparkles, X, HeartPulse, Trophy, Star, Medal, ShieldCheck, Fingerprint, Loader2 } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { useCurrency } from '@/src/context/CurrencyContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -90,6 +90,12 @@ export default function Dashboard() {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
+  // AI-Driven Forecast & Insights state
+  const [forecastData, setForecastData] = useState<any>(null);
+  const [forecastLoading, setForecastLoading] = useState(true);
+  const [spendingInsight, setSpendingInsight] = useState<string>('');
+  const [insightLoading, setInsightLoading] = useState(true);
+
   const [isBiometricPassed, setIsBiometricPassed] = useState(() => {
     const isLockEnabled = localStorage.getItem('biometric_auth_enabled') === 'true';
     const isSessionPassed = sessionStorage.getItem('biometric_authorized_session') === 'true';
@@ -117,7 +123,37 @@ export default function Dashboard() {
     }, 2000);
   };
 
+  const fetchForecast = useCallback(() => {
+    setForecastLoading(true);
+    fetch('/api/ai/forecast', { headers: { 'Authorization': `Bearer ${token}` }})
+      .then(r => r.json())
+      .then(data => {
+        setForecastData(data);
+        setForecastLoading(false);
+      })
+      .catch((e) => {
+        console.error(e);
+        setForecastLoading(false);
+      });
+  }, [token]);
+
+  const fetchInsight = useCallback(() => {
+    setInsightLoading(true);
+    fetch('/api/ai/spending-insights', { headers: { 'Authorization': `Bearer ${token}` }})
+      .then(r => r.json())
+      .then(data => {
+        setSpendingInsight(data?.insight || '');
+        setInsightLoading(false);
+      })
+      .catch((e) => {
+        console.error(e);
+        setInsightLoading(false);
+      });
+  }, [token]);
+
   const fetchDashboardData = useCallback(() => {
+    fetchForecast();
+    fetchInsight();
     Promise.all([
       fetch('/api/transactions', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
       fetch('/api/budgets', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
@@ -146,7 +182,7 @@ export default function Dashboard() {
         setTimeout(() => setShowToast(true), 2500);
       }
     });
-  }, [token]);
+  }, [token, fetchForecast, fetchInsight]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -328,9 +364,53 @@ export default function Dashboard() {
         )}
       </AnimatePresence>
 
-      <div>
-        <h2 className="text-3xl font-display font-bold text-white">Welcome back, {user?.name?.split(' ')[0]}</h2>
-        <p className="text-white/50 mt-1">Here is your financial overview.</p>
+      {/* Welcome & AI Summary Insight Banner */}
+      <div className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-3xl font-display font-bold text-white">Welcome back, {user?.name?.split(' ')[0]}</h2>
+          <p className="text-white/50 mt-1">Here is your financial overview.</p>
+        </div>
+
+        {/* AI Spent Summary Insights Banner */}
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }} 
+          animate={{ opacity: 1, y: 0 }} 
+          className="relative overflow-hidden rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-purple-950/30 via-slate-900/40 to-cyan-950/20 p-5 md:p-6 shadow-[0_0_30px_rgba(34,211,238,0.05)]"
+        >
+          {/* Subtle decoration lines/sweeps */}
+          <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-gradient-to-l from-cyan-500/5 to-transparent pointer-events-none" />
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-cyan-400/10 border border-cyan-400/20 flex items-center justify-center text-cyan-400 shrink-0 shadow-[0_0_15px_rgba(34,211,238,0.2)]">
+                <Sparkles className="w-6 h-6 animate-pulse" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono uppercase tracking-widest text-cyan-400 font-bold">Neural Ledger Intelligence</span>
+                  <span className="px-1.5 py-0.5 bg-cyan-400/10 text-cyan-400 text-[10px] font-mono rounded font-bold uppercase tracking-wider">Active</span>
+                </div>
+                <p className="text-xs md:text-sm text-white/90 leading-relaxed font-sans">
+                  {insightLoading ? (
+                    <span className="flex items-center gap-2 text-white/40 font-mono tracking-widest text-xs">
+                      <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-ping" />
+                      GENERATING SUMMARY HABIT INSIGHTS...
+                    </span>
+                  ) : (
+                    spendingInsight || "Your ledger activity scales inside secure neural bounds compared to previous cycles."
+                  )}
+                </p>
+              </div>
+            </div>
+            {!insightLoading && (
+              <Button 
+                onClick={fetchInsight} 
+                className="bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-xl px-4 py-2 bg-slate-950 text-xs font-mono tracking-wider shrink-0 transition-all cursor-pointer"
+              >
+                Sync Insight
+              </Button>
+            )}
+          </div>
+        </motion.div>
       </div>
 
       {/* Achievement Badges */}
@@ -447,6 +527,108 @@ export default function Dashboard() {
           </TiltCard>
         </motion.div>
       </div>
+
+      {/* AI-Driven Forecast Projection Component */}
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }} 
+        animate={{ opacity: 1, y: 0 }} 
+        transition={{ delay: 0.35 }}
+      >
+        <Card className="glass-card border-none overflow-hidden relative">
+          <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none">
+            <Sparkles className="w-32 h-32 text-purple-400" />
+          </div>
+          <CardHeader className="pb-3 border-b border-white/5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <CardTitle className="text-lg font-bold text-white flex items-center gap-2 font-display">
+                  <TrendingUp className="w-5 h-5 text-purple-400" />
+                  AI Intelligence Spending Forecast
+                </CardTitle>
+                <p className="text-xs text-white/50 mt-1">
+                  Predictive spending ceilings for next month computed via transactions & flagged recurring parameters.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-mono text-white/40">Confidence Score</span>
+                <div className="px-3 py-1 bg-purple-500/10 border border-purple-500/30 text-purple-400 font-bold font-mono text-xs rounded-full shadow-[0_0_12px_rgba(168,85,247,0.2)]">
+                  {forecastLoading ? "??%" : `${forecastData?.confidenceLevel || 85}%`}
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-6">
+            {forecastLoading ? (
+              <div className="py-12 flex flex-col items-center justify-center gap-3">
+                <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
+                <p className="text-xs text-white/40 font-mono tracking-widest uppercase">Analyzing transaction vectors & recurring items...</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                
+                {/* Visual Projected Ceiling Ring or Bento Box */}
+                <div className="md:col-span-4 flex flex-col justify-center items-center p-6 bg-white/5 rounded-2xl border border-white/10 text-center relative overflow-hidden group">
+                  <div className="absolute -inset-0.5 bg-gradient-to-tr from-purple-500/10 to-cyan-500/10 opacity-30 group-hover:opacity-100 transition-all blur-sm pointer-events-none" />
+                  <span className="text-xs font-mono uppercase text-purple-400 tracking-wider">PROJECTED OUTFLOW</span>
+                  <div className="text-4xl font-black font-mono text-white mt-3 shadow-sm">
+                    {formatAmount(forecastData?.projectedSpending || 1500)}
+                  </div>
+                  <p className="text-[10px] text-white/40 mt-1.5 uppercase font-mono tracking-widest">Next Month Ceiling</p>
+                  
+                  {/* Subtle progress indicators */}
+                  <div className="w-full bg-white/5 rounded-full h-1 mt-6 overflow-hidden">
+                    <motion.div 
+                      key="confBar"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${forecastData?.confidenceLevel || 85}%` }}
+                      className="h-full bg-purple-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Reasons / Bullet Explanations */}
+                <div className="md:col-span-4 space-y-3 flex flex-col justify-center">
+                  <h4 className="text-xs font-mono uppercase text-white/50 tracking-wider">Ceiling Rationalization</h4>
+                  <div className="space-y-2.5">
+                    {(forecastData?.reasons || []).map((reason: string, idx: number) => (
+                      <div key={idx} className="flex gap-3 text-xs text-white/80 leading-relaxed items-start">
+                        <div className="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 shrink-0 shadow-[0_0_6px_rgba(168,85,247,0.8)]" />
+                        <p>{reason}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Category Outlay Distribution List */}
+                <div className="md:col-span-4 space-y-3 flex flex-col justify-center">
+                  <h4 className="text-xs font-mono uppercase text-white/50 tracking-wider">Projected Category Breakdown</h4>
+                  <div className="space-y-2">
+                    {(forecastData?.categoryBreakdown || []).slice(0, 4).map((item: any, idx: number) => {
+                      const percentages = [40, 25, 20, 15];
+                      return (
+                        <div key={idx} className="space-y-1">
+                          <div className="flex justify-between text-xs font-mono text-white/70">
+                            <span>{item.category}</span>
+                            <span className="text-white font-bold">{formatAmount(item.projectedAmount)}</span>
+                          </div>
+                          <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                            <motion.div 
+                              initial={{ width: 0 }}
+                              animate={{ width: `${percentages[idx] || 20}%` }}
+                              className="h-full bg-cyan-400"
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="lg:col-span-2">

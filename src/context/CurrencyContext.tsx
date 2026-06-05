@@ -1,23 +1,52 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import countryToCurrency from 'country-to-currency';
 
+export const EXCHANGE_RATES: Record<string, number> = {
+  USD: 1.0,
+  EUR: 0.92,
+  GBP: 0.79,
+  JPY: 155.0,
+  CAD: 1.37,
+  AUD: 1.51,
+  INR: 83.5,
+};
+
 interface CurrencyContextType {
   currency: string;
+  setCurrency: (currency: string) => void;
   formatAmount: (amount: number) => string;
   loadingLocation: boolean;
+  convertFromUSD: (amount: number, targetCurrency?: string) => number;
+  convertToUSD: (amount: number, sourceCurrency?: string) => number;
 }
 
 const CurrencyContext = createContext<CurrencyContextType>({
   currency: 'USD',
+  setCurrency: () => {},
   formatAmount: (amount) => `$${amount.toFixed(2)}`,
   loadingLocation: true,
+  convertFromUSD: (amount) => amount,
+  convertToUSD: (amount) => amount,
 });
 
 export const CurrencyProvider = ({ children }: { children: React.ReactNode }) => {
-  const [currency, setCurrency] = useState('USD');
+  const [currency, setCurrencyState] = useState(() => {
+    return localStorage.getItem('primary_currency') || 'USD';
+  });
   const [loadingLocation, setLoadingLocation] = useState(true);
 
+  const setCurrency = (newVal: string) => {
+    localStorage.setItem('primary_currency', newVal);
+    setCurrencyState(newVal);
+  };
+
   useEffect(() => {
+    // If user has already set a primary choice, do not override with geolocation
+    if (localStorage.getItem('primary_currency')) {
+      setLoadingLocation(false);
+      return;
+    }
+
     const fetchByIP = async () => {
       try {
         const res = await fetch('https://get.geojs.io/v1/ip/geo.json');
@@ -26,8 +55,8 @@ export const CurrencyProvider = ({ children }: { children: React.ReactNode }) =>
         if (data?.country_code) {
           const code = data.country_code.toUpperCase();
           const curr = (countryToCurrency as any)[code];
-          if (curr) {
-            setCurrency(curr);
+          if (curr && EXCHANGE_RATES[curr]) {
+            setCurrencyState(curr);
           }
         }
       } catch (e) {
@@ -47,8 +76,8 @@ export const CurrencyProvider = ({ children }: { children: React.ReactNode }) =>
             if (data?.address?.country_code) {
               const code = data.address.country_code.toUpperCase();
               const curr = (countryToCurrency as any)[code];
-              if (curr) {
-                setCurrency(curr);
+              if (curr && EXCHANGE_RATES[curr]) {
+                setCurrencyState(curr);
                 setLoadingLocation(false);
                 return;
               }
@@ -67,21 +96,33 @@ export const CurrencyProvider = ({ children }: { children: React.ReactNode }) =>
     }
   }, []);
 
+  const convertFromUSD = (amount: number, targetCurrency: string = currency) => {
+    const rate = EXCHANGE_RATES[targetCurrency] || 1.0;
+    return amount * rate;
+  };
+
+  const convertToUSD = (amount: number, sourceCurrency: string = currency) => {
+    const rate = EXCHANGE_RATES[sourceCurrency] || 1.0;
+    return amount / rate;
+  };
+
   const formatAmount = (amount: number) => {
     try {
+      const converted = convertFromUSD(amount);
       return new Intl.NumberFormat(navigator.language, {
         style: 'currency',
         currency: currency,
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
-      }).format(amount);
+      }).format(converted);
     } catch {
-      return `${currency} ${amount.toFixed(2)}`;
+      const rate = EXCHANGE_RATES[currency] || 1.0;
+      return `${currency} ${(amount * rate).toFixed(2)}`;
     }
   };
 
   return (
-    <CurrencyContext.Provider value={{ currency, formatAmount, loadingLocation }}>
+    <CurrencyContext.Provider value={{ currency, setCurrency, formatAmount, loadingLocation, convertFromUSD, convertToUSD }}>
       {children}
     </CurrencyContext.Provider>
   );
