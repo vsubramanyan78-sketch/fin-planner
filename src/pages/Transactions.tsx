@@ -1,11 +1,13 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { format } from 'date-fns';
-import { ArrowUpRight, ArrowDownRight, Wallet, Download, Mic, MicOff, Check, AlertCircle, Plus, Search, Loader2 } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, Wallet, Download, Mic, MicOff, Check, AlertCircle, Plus, Search, Loader2, FileText } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { useCurrency, EXCHANGE_RATES } from '@/src/context/CurrencyContext';
 import { motion, AnimatePresence } from 'motion/react';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -48,6 +50,46 @@ export default function Transactions() {
   const [formError, setFormError] = useState('');
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
+
+  // Computed historical suggested tags
+  const autoSuggestTags = useMemo(() => {
+     if (!title || title.trim().length < 2) return [];
+     const suggestions = new Set<string>();
+     data.forEach((tx: any) => {
+        if (tx.title && tx.title.toLowerCase().includes(title.toLowerCase().trim())) {
+            if (tx.tags) {
+                try {
+                    const tArr = JSON.parse(tx.tags);
+                    tArr.forEach((t: string) => suggestions.add(t));
+                } catch(e) {}
+            }
+        }
+     });
+     return Array.from(suggestions).filter(t => !tags.includes(t)).slice(0, 5);
+  }, [title, data, tags]);
+
+  // Search Suggestions
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const getSearchSuggestions = () => {
+    if (!searchQuery.trim() || searchQuery.length < 2) return [];
+    const q = searchQuery.toLowerCase().trim();
+    const suggestions = new Set<string>();
+    
+    data.forEach(tx => {
+       if (tx.title && tx.title.toLowerCase().includes(q)) suggestions.add(tx.title);
+       if (tx.category && tx.category.toLowerCase().includes(q)) suggestions.add(tx.category);
+       if (tx.tags) {
+           try {
+               const parsedTags = JSON.parse(tx.tags);
+               parsedTags.forEach((tag: string) => {
+                   if (tag.toLowerCase().includes(q)) suggestions.add(`#${tag}`);
+               });
+           } catch(e) {}
+       }
+    });
+    return Array.from(suggestions).slice(0, 5);
+  };
+  const searchSuggestions = getSearchSuggestions();
 
   // AI Auto-Tagging state
   const [isTagging, setIsTagging] = useState(false);
@@ -432,6 +474,55 @@ export default function Transactions() {
     } catch(e) {}
   };
 
+  const exportPDF = () => {
+    const target = filteredData;
+    if (!target || target.length === 0) return;
+    
+    const doc = new jsPDF();
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(20);
+    doc.text("NeuroFinance Spending Report", 14, 22);
+    
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 30);
+    
+    // Quick summary
+    const totalExp = target.filter(t => t.type === 'expense').reduce((a, t) => a + t.amount, 0);
+    const totalInc = target.filter(t => t.type === 'income').reduce((a, t) => a + t.amount, 0);
+    doc.text(`Total Period Income: $${totalInc.toFixed(2)}`, 14, 40);
+    doc.text(`Total Period Expenses: $${totalExp.toFixed(2)}`, 14, 46);
+    
+    const tableColumn = ["Date", "Description", "Category", "Tags", "Type", "Amount"];
+    const tableRows: any[] = [];
+    
+    target.forEach(tx => {
+      let tStr = "";
+      if (tx.tags) {
+        try { tStr = JSON.parse(tx.tags).map((t: string) => `#${t}`).join(", "); } catch(e){}
+      }
+      const dataReq = [
+        format(new Date(tx.date), 'yyyy-MM-dd'),
+        tx.title,
+        tx.category,
+        tStr,
+        tx.type.toUpperCase(),
+        `$${tx.amount.toFixed(2)}`
+      ];
+      tableRows.push(dataReq);
+    });
+    
+    (doc as any).autoTable({
+      head: [tableColumn],
+      body: tableRows,
+      startY: 55,
+      theme: 'grid',
+      headStyles: { fillColor: [34, 211, 238] }
+    });
+    
+    doc.save(`neurofinance-report-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+  };
+
   const exportCSV = () => {
     const target = filteredData;
     if (!target || target.length === 0) return;
@@ -468,6 +559,9 @@ export default function Transactions() {
           <p className="text-muted-foreground">Historical transaction data.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button onClick={exportPDF} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-medium rounded-xl" variant="outline">
+            <FileText className="w-4 h-4 mr-2" /> PDF Report
+          </Button>
           <Button onClick={exportCSV} className="bg-white/5 border border-white/10 hover:bg-white/10 text-white font-medium rounded-xl" variant="outline">
             <Download className="w-4 h-4 mr-2" /> Export CSV
           </Button>
@@ -600,6 +694,16 @@ export default function Transactions() {
                     placeholder="Type a tag and press Enter"
                     className="bg-white/5 border-white/10 text-white rounded-lg text-sm"
                   />
+                  {autoSuggestTags.length > 0 && (
+                     <div className="flex flex-wrap items-center gap-2 pt-2">
+                       <span className="text-[10px] text-white/50 uppercase font-mono tracking-widest">Suggested:</span>
+                       {autoSuggestTags.map(tag => (
+                          <button type="button" key={tag} onClick={() => setTags([...tags, tag])} className="text-[10px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2 py-0.5 rounded cursor-pointer hover:bg-cyan-500/20">
+                            +{tag}
+                          </button>
+                       ))}
+                     </div>
+                  )}
                 </div>
 
                 <div className="pt-2 border-t border-white/5 mt-4 space-y-3">
@@ -750,14 +854,39 @@ export default function Transactions() {
 
       {/* Real-Time Filter Search Bar & Date Range Pickers */}
       <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center">
-        <div className="relative flex-1">
+        <div className="relative flex-1 z-20">
           <Search className="absolute left-3.5 top-3.5 h-4 w-4 text-white/40" />
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => setShowSearchDropdown(true)}
+            onBlur={() => setTimeout(() => setShowSearchDropdown(false), 200)}
             placeholder="Search by vendor/merchant name, category or details..."
-            className="pl-10 bg-white/5 border-white/10 text-white placeholder:text-white/40 rounded-xl py-5"
+            className="pl-10 bg-white/5 border-white/10 text-white placeholder:text-white/40 rounded-xl py-5 relative"
           />
+          {showSearchDropdown && searchSuggestions.length > 0 && (
+            <div className="absolute top-full mt-2 w-full bg-[#0f172a] border border-white/10 rounded-xl overflow-hidden shadow-2xl z-50">
+              {searchSuggestions.map((s, i) => (
+                <div 
+                  key={i} 
+                  onClick={() => {
+                    if (s.startsWith('#')) {
+                       setSearchQuery('');
+                       const tagStr = s.substring(1);
+                       if (!filterTags.includes(tagStr)) setFilterTags([...filterTags, tagStr]);
+                    } else {
+                       setSearchQuery(s);
+                    }
+                    setShowSearchDropdown(false);
+                  }}
+                  className="px-4 py-2.5 text-sm text-white/80 hover:bg-cyan-500/10 hover:text-cyan-400 cursor-pointer flex items-center gap-2 border-b border-white/5 last:border-0"
+                >
+                  <Search className="w-3 h-3 opacity-50" />
+                  {s}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap gap-2 items-center bg-white/5 p-2 rounded-xl border border-white/10">
           {availableTags.map(tag => (

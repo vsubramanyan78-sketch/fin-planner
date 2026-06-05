@@ -9,6 +9,7 @@ import { useAuth } from '@/src/context/AuthContext';
 import { useCurrency } from '@/src/context/CurrencyContext';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { Joyride, STATUS } from 'react-joyride';
 
 const PIE_COLORS = ['#22d3ee', '#a855f7', '#ec4899', '#f43f5e', '#10b981', '#f59e0b', '#3b82f6', '#14b8a6'];
 
@@ -116,6 +117,36 @@ export default function Analytics() {
     window.addEventListener('transactionAdded', fetchAnalyticsData);
     return () => window.removeEventListener('transactionAdded', fetchAnalyticsData);
   }, [fetchAnalyticsData]);
+
+  // Joyride Tour State
+  const [tourState, setTourState] = useState<any>({ run: false, steps: [] });
+  useEffect(() => {
+     if (!localStorage.getItem('tour_what_if')) {
+         setTimeout(() => {
+           setTourState({
+              run: true,
+              steps: [
+                {
+                  target: '#step-what-if',
+                  title: 'What-If Savings Simulator',
+                  content: 'Test out different future savings strategies here! Play around with contribution values to see exactly how fast you can hit your long-term milestones.',
+                  placement: 'top',
+                  disableBeacon: true
+                }
+              ]
+           });
+         }, 1000);
+     }
+  }, []);
+
+  const handleJoyrideCallback = (data: any) => {
+    const { status } = data;
+    const finishedStatuses: string[] = [STATUS.FINISHED, STATUS.SKIPPED];
+    if (finishedStatuses.includes(status)) {
+      setTourState({ ...tourState, run: false });
+      localStorage.setItem('tour_what_if', 'true');
+    }
+  };
 
   const downloadPDF = () => {
     setDownloading(true);
@@ -488,6 +519,33 @@ export default function Analytics() {
 
   return (
     <div className="space-y-6 pb-12" id="analytics-report">
+      <Joyride {...({
+        callback: handleJoyrideCallback,
+        continuous: true,
+        hideCloseButton: true,
+        run: tourState.run,
+        scrollToFirstStep: true,
+        showProgress: true,
+        showSkipButton: true,
+        steps: tourState.steps,
+        styles: {
+          options: {
+            zIndex: 10000,
+            primaryColor: '#22d3ee',
+            backgroundColor: '#0f172a',
+            textColor: '#fff',
+            arrowColor: '#0f172a',
+          },
+          tooltip: {
+            border: '1px solid rgba(34, 211, 238, 0.2)',
+            borderRadius: '16px',
+            boxShadow: '0 0 20px rgba(34, 211, 238, 0.1)'
+          },
+          buttonBack: {
+             color: '#fff',
+          }
+        }
+      } as any)} />
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-display font-bold text-white">Analytics & Insights</h2>
@@ -548,7 +606,7 @@ export default function Analytics() {
       </div>
 
       {/* What-If Forecasting & Savings Milestone Simulator */}
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
+      <motion.div id="step-what-if" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
         <Card className="glass-card border-none bg-gradient-to-br from-cyan-950/20 via-slate-900/40 to-purple-950/20 border border-cyan-500/15">
           <CardHeader className="border-b border-white/5">
             <div className="flex items-center gap-2">

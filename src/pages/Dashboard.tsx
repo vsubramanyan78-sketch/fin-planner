@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
+import confetti from 'canvas-confetti';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 import { 
   ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, DollarSign, Activity, AlertCircle, 
@@ -13,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { Joyride, STATUS } from 'react-joyride';
 
 const COLORS = ['#8b5cf6', '#06b6d4', '#f43f5e', '#10b981', '#f59e0b'];
 
@@ -512,6 +514,25 @@ export default function Dashboard() {
   };
   const savingsStreak = calculateStreak();
 
+  // Highlight achievements with confetti
+  useEffect(() => {
+    if (savingsStreak > 0 && savingsStreak % 7 === 0) {
+      if (!localStorage.getItem(`streak_confetti_${savingsStreak}`)) {
+        confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+        localStorage.setItem(`streak_confetti_${savingsStreak}`, 'true');
+      }
+    }
+  }, [savingsStreak]);
+
+  useEffect(() => {
+    if (goalTarget > 0 && remainingGoal === 0) {
+      if (!localStorage.getItem(`goal_confetti_${goalName}`)) {
+        confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, zIndex: 1000 });
+        localStorage.setItem(`goal_confetti_${goalName}`, 'true');
+      }
+    }
+  }, [remainingGoal, goalTarget, goalName]);
+
   // Smart Forecast logic (Top 3 Potential Shortfalls for Next Month based on 6-month data)
   const getSmartForecastShortfalls = () => {
      const catAverages: Record<string, number> = {};
@@ -549,6 +570,44 @@ export default function Dashboard() {
   }, []);
 
   const isWidgetActive = (id: string) => activeWidgets.includes(id);
+
+  // Joyride Tour State
+  const [tourState, setTourState] = useState<any>({ run: false, steps: [] });
+  useEffect(() => {
+     if (!localStorage.getItem('tour_smart_forecast')) {
+         // short delay to let things load
+         setTimeout(() => {
+           setTourState({
+              run: true,
+              steps: [
+                {
+                  target: 'body',
+                  title: 'Welcome to NeuroFinance!',
+                  content: 'Let us show you around some intelligent AI-powered features.',
+                  placement: 'center',
+                  disableBeacon: true
+                },
+                {
+                  target: '#step-smart-forecast',
+                  title: 'Smart Forecast Tracker',
+                  content: 'This AI Engine predicts your spending ceilings based on your 6-month historical trends, so you never get caught off-guard.',
+                  placement: 'top',
+                  disableBeacon: true
+                }
+              ]
+           });
+         }, 1000);
+     }
+  }, []);
+
+  const handleJoyrideCallback = (data: any) => {
+    const { status } = data;
+    const finishedStatuses: string[] = [STATUS.FINISHED, STATUS.SKIPPED];
+    if (finishedStatuses.includes(status)) {
+      setTourState({ ...tourState, run: false });
+      localStorage.setItem('tour_smart_forecast', 'true');
+    }
+  };
 
   if (!isBiometricPassed) {
     return (
@@ -797,6 +856,34 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col gap-6 relative pb-12">
+      <Joyride {...({
+        callback: handleJoyrideCallback,
+        continuous: true,
+        hideCloseButton: true,
+        run: tourState.run,
+        scrollToFirstStep: true,
+        showProgress: true,
+        showSkipButton: true,
+        steps: tourState.steps,
+        styles: {
+          options: {
+            zIndex: 10000,
+            primaryColor: '#22d3ee',
+            backgroundColor: '#0f172a',
+            textColor: '#fff',
+            arrowColor: '#0f172a',
+          },
+          tooltip: {
+            border: '1px solid rgba(34, 211, 238, 0.2)',
+            borderRadius: '16px',
+            boxShadow: '0 0 20px rgba(34, 211, 238, 0.1)'
+          },
+          buttonBack: {
+             color: '#fff',
+          }
+        }
+      } as any)} />
+      
       {/* Toast Notification */}
       <AnimatePresence>
         {showToast && (
@@ -1134,6 +1221,7 @@ export default function Dashboard() {
       {/* AI-Driven Forecast Projection Component */}
       {isWidgetActive('smart_forecast') && (
       <motion.div 
+        id="step-smart-forecast"
         initial={{ opacity: 0, y: 20 }} 
         animate={{ opacity: 1, y: 0 }} 
         transition={{ delay: 0.35 }}
