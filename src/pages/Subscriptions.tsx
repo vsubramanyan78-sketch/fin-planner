@@ -58,6 +58,8 @@ export default function Subscriptions() {
   // Show Toast helpers
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
+    // Dispatch event to recalculate upcoming billing warnings instantly
+    window.dispatchEvent(new Event('budgetAlertsChanged'));
     setTimeout(() => {
       setToastMessage(null);
     }, 4000);

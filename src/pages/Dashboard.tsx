@@ -710,6 +710,26 @@ export default function Dashboard() {
   const hasBigSpender = totalExpense > 5000;
   const hasBudgetMaster = !toastMessage;
 
+  // Active budget limit approaching calculations (spent >= 80%)
+  const getApproachingBudgets = () => {
+    const approaching: { category: string; spent: number; limit: number; ratio: number }[] = [];
+    budgets.forEach((b: any) => {
+      const catName = b.category || '';
+      const spent = transactions
+        .filter((t: any) => t.type === 'expense' && t.category.toLowerCase() === catName.toLowerCase())
+        .reduce((sum: number, t: any) => sum + t.amount, 0);
+      const limit = b.limit_amount || 0;
+      if (limit > 0) {
+        const r = spent / limit;
+        if (r >= 0.8) {
+          approaching.push({ category: catName, spent, limit, ratio: r });
+        }
+      }
+    });
+    return approaching;
+  };
+  const approachingBudgets = getApproachingBudgets();
+
   return (
     <div className="space-y-6 relative pb-12">
       {/* Toast Notification */}
@@ -741,6 +761,44 @@ export default function Dashboard() {
           <h2 className="text-3xl font-display font-bold text-white">Welcome back, {user?.name?.split(' ')[0]}</h2>
           <p className="text-white/50 mt-1">Here is your financial overview.</p>
         </div>
+
+        {/* Approaching Budget Limits Notification Badge & Service Alerts */}
+        {approachingBudgets.length > 0 && (
+          <motion.div 
+            initial={{ opacity: 0, y: -15 }} 
+            animate={{ opacity: 1, y: 0 }}
+            className="p-5 rounded-2xl bg-gradient-to-r from-red-950/20 to-[#1e141a] border border-red-500/20 relative overflow-hidden shadow-[0_0_20px_rgba(239,68,68,0.06)]"
+          >
+            <div className="flex items-start gap-4">
+              <div className="relative shrink-0 flex items-center justify-center w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 mt-1">
+                <AlertCircle className="w-5 h-5" />
+                <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 shadow-[0_0_8px_rgba(239,68,68,1)]"></span>
+                </span>
+              </div>
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono font-bold uppercase tracking-wider text-red-400">Budget Limit Notification Alarm</span>
+                  <span className="px-2 py-0.5 bg-red-500/10 text-red-00 border border-red-500/10 text-[9px] font-bold font-mono rounded-full uppercase">Approaching Cap Limit!</span>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-xs text-white/85 leading-normal">
+                    You have <span className="font-bold text-white">{approachingBudgets.length} budget categor{approachingBudgets.length > 1 ? 'ies' : 'y'}</span> nearing or exceeding limit:
+                  </p>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {approachingBudgets.map((b, i) => (
+                      <span key={i} className="px-2.5 py-1 text-[10px] font-mono rounded-xl bg-white/5 border border-white/10 text-white font-medium flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+                        {b.category}: {formatAmount(b.spent)} / {formatAmount(b.limit)} ({(b.ratio * 105).toFixed(0)}%)
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
 
         {/* AI Spent Summary Insights Banner */}
         <motion.div 

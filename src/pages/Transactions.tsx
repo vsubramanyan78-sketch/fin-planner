@@ -4,7 +4,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { ArrowUpRight, ArrowDownRight, Wallet, Download, Mic, MicOff, Check, AlertCircle, Plus, Search, Loader2 } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
-import { useCurrency } from '@/src/context/CurrencyContext';
+import { useCurrency, EXCHANGE_RATES } from '@/src/context/CurrencyContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -21,6 +21,12 @@ export default function Transactions() {
   const [searchQuery, setSearchQuery] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+
+  // Currency Converter Widget State
+  const [convAmount, setConvAmount] = useState('100');
+  const [convFrom, setConvFrom] = useState('USD');
+  const [convTo, setConvTo] = useState('EUR');
+  const [convertExpanded, setConvertExpanded] = useState(true);
 
   // Add Transaction Form state
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -503,6 +509,112 @@ export default function Transactions() {
           </Dialog>
         </div>
       </div>
+
+      {/* Real-Time Currency Converter helper widget */}
+      <AnimatePresence>
+        {convertExpanded && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden mb-6"
+          >
+            <Card className="glass-card border-none bg-gradient-to-r from-cyan-950/15 to-purple-950/15 border border-cyan-500/10 p-5 rounded-2xl relative shadow-[0_0_20px_rgba(34,211,238,0.05)]">
+              <div className="absolute top-3 right-3">
+                <Button 
+                  onClick={() => setConvertExpanded(false)}
+                  variant="ghost" 
+                  size="sm" 
+                  className="text-white/40 hover:text-white hover:bg-white/5 rounded-full w-8 h-8 p-0 cursor-pointer"
+                >
+                  ✕
+                </Button>
+              </div>
+              <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
+                <div>
+                  <h4 className="text-white font-bold text-sm tracking-wide uppercase flex items-center gap-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-400"></span>
+                    </span>
+                    Live Multi-Currency Calculator Widget
+                  </h4>
+                  <p className="text-xs text-white/50 mt-1">Update, convert, and query relative exchange values utilizing real-time exchange ratios.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-4 bg-black/30 p-3 rounded-2xl border border-white/5 w-full lg:w-auto">
+                  <div className="space-y-1.5 flex-1 sm:flex-initial">
+                    <span className="text-[10px] font-mono text-white/40 block font-bold uppercase tracking-wider">From Amount</span>
+                    <input
+                      type="number"
+                      value={convAmount}
+                      onChange={(e) => setConvAmount(e.target.value)}
+                      className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white w-full sm:w-28 font-mono focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+                  
+                  <div className="space-y-1.5 flex-1 sm:flex-initial">
+                    <span className="text-[10px] font-mono text-white/40 block font-bold uppercase tracking-wider">Source Code</span>
+                    <select
+                      value={convFrom}
+                      onChange={(e) => setConvFrom(e.target.value)}
+                      className="bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white w-full sm:w-24 focus:outline-none focus:border-cyan-400 cursor-pointer"
+                    >
+                      {Object.keys(EXCHANGE_RATES).map(cur => (
+                        <option key={cur} value={cur}>{cur}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <span className="text-cyan-400 font-mono text-xs font-bold pt-4 self-center text-center">➔</span>
+
+                  <div className="space-y-1.5 flex-1 sm:flex-initial">
+                    <span className="text-[10px] font-mono text-white/40 block font-bold uppercase tracking-wider">Target Code</span>
+                    <select
+                      value={convTo}
+                      onChange={(e) => setConvTo(e.target.value)}
+                      className="bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white w-full sm:w-24 focus:outline-none focus:border-cyan-400 cursor-pointer"
+                    >
+                      {Object.keys(EXCHANGE_RATES).map(cur => (
+                        <option key={cur} value={cur}>{cur}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="self-stretch flex items-center justify-center sm:border-l border-white/10 pl-0 sm:pl-4">
+                    <div className="text-left py-2">
+                      <span className="text-[10px] font-mono text-cyan-400 uppercase tracking-widest block font-bold">Calculation Output</span>
+                      <span className="text-lg font-black text-white font-mono leading-none">
+                        {(() => {
+                          const amt = parseFloat(convAmount) || 0;
+                          const usdVal = convFrom === 'USD' ? amt : amt / (EXCHANGE_RATES[convFrom] || 1);
+                          const targetVal = convTo === 'USD' ? usdVal : usdVal * (EXCHANGE_RATES[convTo] || 1);
+                          
+                          return new Intl.NumberFormat('en-US', {
+                            style: 'currency',
+                            currency: convTo
+                          }).format(targetVal);
+                        })()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {!convertExpanded && (
+        <div className="flex justify-start mb-4">
+          <Button 
+            onClick={() => setConvertExpanded(true)}
+            variant="outline"
+            className="text-xs bg-white/5 border border-white/10 text-cyan-400 hover:text-white rounded-xl py-1 px-3 cursor-pointer"
+          >
+            💱 Open Currency Converter Widget
+          </Button>
+        </div>
+      )}
 
       {/* Real-Time Filter Search Bar & Date Range Pickers */}
       <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center">

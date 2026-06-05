@@ -10,7 +10,7 @@ import AiAssistantPanel from './AiAssistantPanel';
 
 export default function Layout() {
   const { user, logout, token } = useAuth();
-  const { currency, setCurrency } = useCurrency();
+  const { currency, setCurrency, formatAmount } = useCurrency();
   const location = useLocation();
   const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isAiPanelOpen, setAiPanelOpen] = useState(false);
@@ -41,14 +41,17 @@ export default function Layout() {
 
     Promise.all([
       fetch('/api/transactions', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-      fetch('/api/budgets', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
-    ]).then(([txData, budgetData]) => {
+      fetch('/api/budgets', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
+      fetch('/api/subscriptions', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()).catch(() => ({ subscriptions: [] }))
+    ]).then(([txData, budgetData, subData]) => {
       const txs = txData.transactions || [];
       const budg = budgetData.budgets || [];
+      const subs = subData.subscriptions || [];
       
       const now = new Date();
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth();
+      const todayUTC = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
       
       // Calculate current month's spent per category
       const categorySpent: Record<string, number> = {};
@@ -62,6 +65,8 @@ export default function Layout() {
       });
       
       const alerts: any[] = [];
+      
+      // 1. Budget Alerts
       budg.forEach((b: any) => {
         const catName = b.category;
         const spent = categorySpent[catName.toLowerCase()] || 0;
@@ -74,15 +79,36 @@ export default function Layout() {
               id: `exceeded-${catName}`,
               type: 'danger',
               category: catName,
-              message: `Over budget limits: Spent $${spent.toFixed(2)} of $${limit.toFixed(2)} monthly cap.`
+              message: `Over budget limits: Spent ${formatAmount(spent)} of ${formatAmount(limit)} monthly cap.`
             });
           } else if (ratio >= 0.8) {
             alerts.push({
               id: `approaching-${catName}`,
               type: 'warning',
               category: catName,
-              message: `Approaching budget caps: Spent $${spent.toFixed(2)} of $${limit.toFixed(2)} monthly limit (${(ratio * 100).toFixed(0)}%).`
+              message: `Approaching budget caps: Spent ${formatAmount(spent)} of ${formatAmount(limit)} monthly limit (${(ratio * 100).toFixed(0)}%).`
             });
+          }
+        }
+      });
+
+      // 2. Automated Upstream Subscription Renewal Alerts (Prevent Overdrafts 3 Days Window)
+      subs.forEach((sub: any) => {
+        if (sub.is_active === 1 || sub.is_active === true) {
+          const billingDate = new Date(sub.next_billing_date);
+          if (!isNaN(billingDate.getTime())) {
+            const billingUTC = Date.UTC(billingDate.getFullYear(), billingDate.getMonth(), billingDate.getDate());
+            const diffDays = Math.ceil((billingUTC - todayUTC) / (1000 * 60 * 60 * 24));
+            
+            if (diffDays >= 0 && diffDays <= 3) {
+              const dayText = diffDays === 0 ? "today" : diffDays === 1 ? "tomorrow" : `in ${diffDays} days`;
+              alerts.push({
+                id: `renewal-${sub.id}`,
+                type: 'warning',
+                category: 'Subscription Renewal',
+                message: `Renewal Alert: "${sub.name}" billing ${dayText} for ${formatAmount(sub.amount)}. Review account to prevent overdrafts.`
+              });
+            }
           }
         }
       });

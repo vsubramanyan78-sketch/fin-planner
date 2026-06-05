@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CalendarHeatmap } from '@/src/components/CalendarHeatmap';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import { motion } from 'motion/react';
 import { Sparkles, TrendingUp, TrendingDown, Target, Download, Loader2 } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
@@ -57,6 +57,12 @@ export default function Analytics() {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [budgets, setBudgets] = useState<any[]>([]);
   const [downloading, setDownloading] = useState(false);
+
+  // What-If Simulation State
+  const [whatIfContribution, setWhatIfContribution] = useState(250);
+  const [whatIfMilestone, setWhatIfMilestone] = useState('emergency');
+  const [customMilestoneName, setCustomMilestoneName] = useState('Custom Action Goal');
+  const [customMilestoneAmount, setCustomMilestoneAmount] = useState(15000);
 
   const fetchAnalyticsData = useCallback(() => {
     fetch('/api/transactions', {
@@ -385,6 +391,63 @@ export default function Analytics() {
   const totalExpense = transactions.filter((t: any) => t.type === 'expense').reduce((acc: number, t: any) => acc + t.amount, 0);
   const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome * 100).toFixed(1) : '0.0';
 
+  // Last 6-months Chronological Expense and Budget Trends Tracker
+  const getLast6MonthsData = () => {
+    const dataList = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const mName = d.toLocaleString('default', { month: 'short' });
+      
+      const spend = transactions
+        .filter((t: any) => {
+          if (t.type !== 'expense' || !t.date) return false;
+          const txDate = new Date(t.date);
+          return txDate.getFullYear() === d.getFullYear() && txDate.getMonth() === d.getMonth();
+        })
+        .reduce((sum: number, t: any) => sum + t.amount, 0);
+        
+      dataList.push({
+        name: mName,
+        spend: spend,
+        budget: 3500 // standard ceiling limit
+      });
+    }
+    return dataList;
+  };
+  const last6MonthsData = getLast6MonthsData();
+
+  // What-If Milestone Calculations
+  const calculatedBaseline = totalIncome - totalExpense;
+  const baselineSavingsRate = calculatedBaseline > 0 ? calculatedBaseline : 450; // standard fallback of $450/month if negative or 0
+  const adjustedSavingsRate = Math.max(15, baselineSavingsRate + whatIfContribution);
+
+  const targetValue = 
+    whatIfMilestone === 'emergency' ? 15000 : 
+    whatIfMilestone === 'home' ? 85000 : 
+    whatIfMilestone === 'retirement' ? 500000 : 
+    Number(customMilestoneAmount) || 10000;
+
+  const targetName = 
+    whatIfMilestone === 'emergency' ? 'Emergency Reserve Fund' : 
+    whatIfMilestone === 'home' ? 'Silicon Valley Downpayment' : 
+    whatIfMilestone === 'retirement' ? 'Financial Freedom Nest' : 
+    customMilestoneName;
+
+  const monthsStandard = targetValue / baselineSavingsRate;
+  const monthsAdjusted = targetValue / adjustedSavingsRate;
+  const monthlySavingsDelta = monthsStandard - monthsAdjusted;
+
+  // Projection points for AreaChart comparisons
+  const projectionData: { month: string; Baseline: number; Adjusted: number }[] = [];
+  for (let m = 0; m <= 36; m += 3) {
+    projectionData.push({
+      month: `M+${m}`,
+      Baseline: Math.round(baselineSavingsRate * m),
+      Adjusted: Math.round(adjustedSavingsRate * m)
+    });
+  }
+
   if (loading) return <SkeletonLoader />;
 
   return (
@@ -448,6 +511,168 @@ export default function Analytics() {
         </motion.div>
       </div>
 
+      {/* What-If Forecasting & Savings Milestone Simulator */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
+        <Card className="glass-card border-none bg-gradient-to-br from-cyan-950/20 via-slate-900/40 to-purple-950/20 border border-cyan-500/15">
+          <CardHeader className="border-b border-white/5">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-cyan-400 animate-pulse" />
+              <CardTitle className="text-white font-display text-lg">Interactive Milestone & What-If Savings Simulator</CardTitle>
+            </div>
+            <p className="text-xs text-white/50">Model adjustments to your monthly savings level to visualize target milestones timing outcomes.</p>
+          </CardHeader>
+          <CardContent className="pt-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            {/* Simulation Controls - Left Side */}
+            <div className="lg:col-span-5 space-y-6">
+              
+              <div className="space-y-2">
+                <label className="text-[10px] font-mono uppercase tracking-widest text-cyan-400 font-bold block">1. Select Target Milestone</label>
+                <select
+                  value={whatIfMilestone}
+                  onChange={(e) => setWhatIfMilestone(e.target.value)}
+                  className="w-full bg-[#0d1223] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white uppercase font-mono tracking-wider focus:outline-none focus:border-cyan-400 cursor-pointer"
+                >
+                  <option value="emergency">Emergency Reserve Fund ($15,000)</option>
+                  <option value="home">Silicon Valley Downpayment ($85,000)</option>
+                  <option value="retirement">Financial Freedom Nest ($500,000)</option>
+                  <option value="custom">Custom Investment Milestone</option>
+                </select>
+              </div>
+
+              {whatIfMilestone === 'custom' && (
+                <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-white/5 border border-white/10 animate-in fade-in duration-250">
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-mono text-white/40 uppercase tracking-widest block font-bold">Goal Name</label>
+                    <input
+                      type="text"
+                      value={customMilestoneName}
+                      onChange={(e) => setCustomMilestoneName(e.target.value)}
+                      className="w-full bg-slate-950 border border-white/15 rounded-lg px-3 py-1.5 text-xs text-white uppercase tracking-wider focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-mono text-white/40 uppercase tracking-widest block font-bold">Target Cost</label>
+                    <input
+                      type="number"
+                      value={customMilestoneAmount}
+                      onChange={(e) => setCustomMilestoneAmount(Number(e.target.value))}
+                      className="w-full bg-slate-950 border border-white/15 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <div className="flex justify-between items-center text-xs font-mono">
+                  <span className="text-cyan-400 uppercase tracking-wider font-bold">2. Adjust Save Level</span>
+                  <span className={`px-2.5 py-0.5 rounded-full font-bold ${whatIfContribution >= 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>
+                    {whatIfContribution >= 0 ? "+" : ""}{formatAmount(whatIfContribution)}/mo
+                  </span>
+                </div>
+                
+                <input
+                  type="range"
+                  min="-300"
+                  max="1500"
+                  step="50"
+                  value={whatIfContribution}
+                  onChange={(e) => setWhatIfContribution(Number(e.target.value))}
+                  className="w-full select-none cursor-ew-resize accent-cyan-400"
+                />
+                
+                <div className="flex items-center justify-between text-[10px] text-white/35 font-mono">
+                  <span>Reduce Save (-{formatAmount(300)})</span>
+                  <span>Neutral ($0)</span>
+                  <span>Amplify (+{formatAmount(1500)})</span>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-cyan-400/5 border border-cyan-400/10 space-y-3 font-mono">
+                <div className="flex justify-between items-center text-[10px] text-white/50 border-b border-white/5 pb-2">
+                  <span>BASELINE RATE:</span>
+                  <span className="text-white font-bold">{formatAmount(baselineSavingsRate)} / mo</span>
+                </div>
+                <div className="flex justify-between items-center text-[11px] text-cyan-400 font-bold">
+                  <span>ADJUSTED SAVING VECTOR:</span>
+                  <span className="text-cyan-300 font-extrabold">{formatAmount(adjustedSavingsRate)} / mo</span>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Simulated Outcomes - Right Side */}
+            <div className="lg:col-span-7 flex flex-col justify-between space-y-6">
+              
+              <div className="p-5 rounded-2xl bg-[#030612]/80 border border-white/5 relative overflow-hidden flex-1 flex flex-col justify-center">
+                <div className="absolute top-[-20%] right-[-20%] w-48 h-48 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+                
+                <p className="text-xs uppercase font-mono tracking-widest text-[#22d3ee]/80 font-bold mb-2">Simulated Outcome Delta</p>
+                
+                <div className="space-y-3">
+                  <h4 className="text-white font-bold text-base leading-normal">
+                    Target Goal: <span className="text-cyan-300 font-extrabold">"{targetName}"</span> ({formatAmount(targetValue)})
+                  </h4>
+                  
+                  <p className="text-[#94a3b8] text-sm leading-relaxed">
+                    At your standard baseline save velocity, you will reach this milestone in <span className="text-white font-bold font-mono">{monthsStandard.toFixed(1)} months</span> ({ (monthsStandard / 12).toFixed(1) } yrs).
+                  </p>
+                  
+                  <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+                    <div>
+                      <span className="text-[10px] font-mono text-white/50 uppercase tracking-widest block">Adjusted Horizon</span>
+                      <span className="text-xl font-black text-white font-mono">{monthsAdjusted.toFixed(1)} months</span>
+                    </div>
+                    {monthlySavingsDelta !== 0 && (
+                      <div className="shrink-0 flex items-center gap-2">
+                        {monthlySavingsDelta > 0 ? (
+                          <div className="px-3.5 py-2 bg-emerald-500/10 text-emerald-400 font-mono text-xs font-bold rounded-xl border border-emerald-500/20 flex items-center gap-1.5 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
+                            <TrendingUp className="w-3.5 h-3.5 animate-bounce" />
+                            {Math.round(monthlySavingsDelta).toFixed(0)} MONTHS SOONER!
+                          </div>
+                        ) : (
+                          <div className="px-3.5 py-2 bg-red-500/10 text-red-400 font-mono text-xs font-bold rounded-xl border border-red-500/25 flex items-center gap-1.5">
+                            <TrendingDown className="w-3.5 h-3.5" />
+                            {Math.abs(Math.round(monthlySavingsDelta)).toFixed(0)} MONTHS DELAY
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Area Chart Comparison */}
+              <div className="h-[150px] w-full mt-4">
+                <span className="text-[9px] font-mono uppercase tracking-widest text-white/35 block mb-2 text-center font-bold">Net Worth Forecast (3 Years Projection Sandbox)</span>
+                <ResponsiveContainer width="100%" height="85%">
+                  <AreaChart data={projectionData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                    <defs>
+                      <linearGradient id="colorBaseline" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                      </linearGradient>
+                      <linearGradient id="colorAdjusted" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.4}/>
+                        <stop offset="95%" stopColor="#22d3ee" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
+                    <XAxis dataKey="month" stroke="rgba(255,255,255,0.25)" fontSize={9} tickLine={false} axisLine={false} />
+                    <YAxis stroke="rgba(255,255,255,0.25)" fontSize={9} tickLine={false} axisLine={false} tickFormatter={(v) => formatAmount(v).split('.')[0]} />
+                    <Tooltip cursor={{ stroke: 'rgba(34,211,238,0.1)', strokeWidth: 1 }} content={<CustomTooltip />} />
+                    <Area type="monotone" name="Standard" dataKey="Baseline" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorBaseline)" />
+                    <Area type="monotone" name="Adjusted" dataKey="Adjusted" stroke="#22d3ee" strokeWidth={3} fillOpacity={1} fill="url(#colorAdjusted)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+
+            </div>
+
+          </CardContent>
+        </Card>
+      </motion.div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
         <Card className="glass-card border-none h-full">
@@ -464,6 +689,36 @@ export default function Analytics() {
                   <Tooltip cursor={{ fill: 'rgba(255,255,255,0.05)' }} content={<CustomTooltip />} />
                   <Bar dataKey="spend" fill="#22d3ee" radius={[4, 4, 0, 0]} isAnimationActive={true} animationDuration={1500} />
                   <Bar dataKey="budget" fill="rgba(255,255,255,0.1)" radius={[4, 4, 0, 0]} isAnimationActive={true} animationDuration={1500} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+        </motion.div>
+
+        {/* 6-Month Spending Trends BarChart */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}>
+        <Card className="glass-card border-none h-full bg-gradient-to-tr from-[#0b0c15] to-[#121323]">
+          <CardHeader>
+            <CardTitle className="text-white/80">6-Month Spending Trends</CardTitle>
+            <p className="text-xs text-white/40 mt-1">Sustained rolling half-year outflow and ceiling targets velocity analysis.</p>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px] w-full mt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={last6MonthsData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="barSpend" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#f43f5e" stopOpacity={0.85}/>
+                      <stop offset="100%" stopColor="#ec4899" stopOpacity={0.4}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                  <XAxis dataKey="name" stroke="rgba(255,255,255,0.3)" fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis stroke="rgba(255,255,255,0.3)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => formatAmount(v)} />
+                  <Tooltip cursor={{ fill: 'rgba(255,255,255,0.03)' }} content={<CustomTooltip />} />
+                  <Bar dataKey="spend" name="Monthly Incurred" fill="url(#barSpend)" radius={[6, 6, 0, 0]} isAnimationActive={true} animationDuration={1800} />
+                  <Bar dataKey="budget" name="Budget Limit" fill="rgba(255,255,255,0.05)" radius={[6, 6, 0, 0]} isAnimationActive={true} animationDuration={1800} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

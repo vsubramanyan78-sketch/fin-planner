@@ -226,8 +226,11 @@ export default function ScanReceipt() {
                 />
                 
                 {preview ? (
-                  <div className="absolute inset-2 rounded-lg overflow-hidden flex items-center justify-center bg-black/50">
-                    <img src={preview} alt="Receipt Preview" className="max-h-full max-w-full object-contain" />
+                  <div className="absolute inset-2 rounded-lg overflow-hidden flex flex-col items-center justify-center bg-[#070913]/90 border border-cyan-500/10">
+                    <div className="absolute top-2 left-2 z-20 px-2.5 py-0.5 rounded-full bg-cyan-400/20 border border-cyan-400/30 text-cyan-300 font-mono text-[9px] font-bold uppercase tracking-wider animate-pulse flex items-center gap-1">
+                      <Camera className="w-2.5 h-2.5" /> Captured Frame Preview
+                    </div>
+                    <img src={preview} alt="Receipt Preview" className="max-h-[85%] max-w-full object-contain filter brightness-105" />
                   </div>
                 ) : (
                   <div className="text-center space-y-4">
@@ -247,10 +250,16 @@ export default function ScanReceipt() {
               <Button
                 type="button"
                 variant="ghost"
-                onClick={() => { setFile(null); setPreview(null); setResult(null); }}
-                className="mt-3 text-xs font-mono text-white/40 hover:text-white flex items-center gap-1.5 cursor-pointer mx-auto"
+                onClick={() => { 
+                  setFile(null); 
+                  setPreview(null); 
+                  setResult(null); 
+                  setInputMode('camera'); 
+                  startCamera(); 
+                }}
+                className="mt-3 text-xs font-mono text-cyan-400 hover:text-white flex items-center gap-1.5 cursor-pointer mx-auto bg-cyan-950/20 border border-cyan-800/20 px-4 py-2 rounded-xl"
               >
-                <RotateCcw className="w-3.5 h-3.5" /> Retake / Clear Image
+                <RotateCcw className="w-3.5 h-3.5" /> Retake Snapshot
               </Button>
             )}
 
