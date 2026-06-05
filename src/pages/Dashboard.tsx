@@ -13,6 +13,8 @@ import { useCurrency } from '@/src/context/CurrencyContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { DebtPaydownCalculator } from '@/src/components/DebtPaydownCalculator';
+import { FinancialHealthScore } from '@/src/components/FinancialHealthScore';
 import { cn } from '@/lib/utils';
 import { Joyride, STATUS } from 'react-joyride';
 
@@ -439,6 +441,14 @@ export default function Dashboard() {
       if (overriddenBudget) {
         setToastMessage(`You have exceeded 90% of your ${overriddenBudget.category} budget for this month.`);
         setTimeout(() => setShowToast(true), 2500);
+      }
+      
+      // Spend Alert: Unusual High Velocity
+      const recentTxs = txs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10);
+      const avgRecent = recentTxs.reduce((a, b) => a + b.amount, 0) / 10;
+      if (recentTxs[0]?.amount > avgRecent * 3) {
+          setToastMessage(`Unusual high-velocity expense detected: ${recentTxs[0].title}`);
+          setShowToast(true);
       }
     });
   }, [token, fetchForecast, fetchInsight]);
@@ -1687,6 +1697,10 @@ export default function Dashboard() {
               
               {/* Category-level Budget Progress Bars */}
               <div className="lg:col-span-7 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <FinancialHealthScore savingsRate={savingsRate} debtToIncome={30} />
+                  <DebtPaydownCalculator />
+                </div>
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-mono text-cyan-400 uppercase tracking-widest font-bold">Category Budgets</h4>
                   <Button 
