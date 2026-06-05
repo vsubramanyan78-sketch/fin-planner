@@ -80,10 +80,10 @@ router.get("/transactions", authMiddleware, (req: any, res) => {
 });
 
 router.post("/transactions", authMiddleware, (req: any, res) => {
-  const { amount, type, category, title, date, is_recurring, recurring_frequency, notes } = req.body;
+  const { amount, type, category, title, date, is_recurring, recurring_frequency, notes, tags } = req.body;
   const db = getDb();
   const id = uuidv4();
-  const stmt = db.prepare("INSERT INTO transactions (id, user_id, amount, type, category, title, date, is_recurring, recurring_frequency, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  const stmt = db.prepare("INSERT INTO transactions (id, user_id, amount, type, category, title, date, is_recurring, recurring_frequency, notes, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
   stmt.run(
     id,
     req.userId,
@@ -94,9 +94,32 @@ router.post("/transactions", authMiddleware, (req: any, res) => {
     date || new Date().toISOString(),
     is_recurring ? 1 : 0,
     recurring_frequency || null,
-    notes || null
+    notes || null,
+    tags ? JSON.stringify(tags) : null
   );
   res.json({ id });
+});
+
+router.delete("/transactions/bulk", authMiddleware, (req: any, res) => {
+  const { ids } = req.body;
+  if (!ids || !Array.isArray(ids)) return res.status(400).json({ error: "Invalid ids" });
+  
+  const db = getDb();
+  const placeholders = ids.map(() => "?").join(",");
+  const stmt = db.prepare(`DELETE FROM transactions WHERE user_id = ? AND id IN (${placeholders})`);
+  stmt.run(req.userId, ...ids);
+  res.json({ success: true, deleted: ids.length });
+});
+
+router.put("/transactions/bulk-category", authMiddleware, (req: any, res) => {
+  const { ids, category } = req.body;
+  if (!ids || !Array.isArray(ids) || !category) return res.status(400).json({ error: "Invalid input" });
+  
+  const db = getDb();
+  const placeholders = ids.map(() => "?").join(",");
+  const stmt = db.prepare(`UPDATE transactions SET category = ? WHERE user_id = ? AND id IN (${placeholders})`);
+  stmt.run(category, req.userId, ...ids);
+  res.json({ success: true, updated: ids.length });
 });
 
 router.get("/budgets", authMiddleware, (req: any, res) => {

@@ -5,12 +5,12 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsToolti
 import { 
   ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, DollarSign, Activity, AlertCircle, 
   Target, Sparkles, X, HeartPulse, Trophy, Star, Medal, ShieldCheck, Fingerprint, 
-  Loader2, Plus, Camera, Mic, Check, HelpCircle, FileSpreadsheet, RotateCcw
+  Loader2, Plus, Camera, Mic, Check, HelpCircle, FileSpreadsheet, RotateCcw, LayoutDashboard
 } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { useCurrency } from '@/src/context/CurrencyContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
@@ -485,6 +485,71 @@ export default function Dashboard() {
   const balance = totalIncome - totalExpense;
   const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) * 100 : 0;
 
+  // Calculate Savings Streak (Consecutive days under average daily budget)
+  const calculateStreak = () => {
+    let streak = 0;
+    const today = new Date();
+    // Simplified logic: iterating back day by day
+    for (let i = 0; i < 30; i++) {
+        const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+        const dayStr = d.toISOString().split('T')[0];
+        
+        const dayExpenses = transactions
+            .filter((t: any) => t.type === 'expense' && t.date.startsWith(dayStr))
+            .reduce((sum: number, t: any) => sum + t.amount, 0);
+            
+        // Arbitrary reasonable daily limit based on monthly budgets total
+        const monthlyBudgetsTotal = budgets.reduce((sum: number, b: any) => sum + (b.limit_amount || 0), 0) || 3000;
+        const dailyLimit = monthlyBudgetsTotal / 30;
+        
+        if (dayExpenses <= dailyLimit * 1.1) {
+            streak++;
+        } else {
+            break; // streak broke on this day
+        }
+    }
+    return streak;
+  };
+  const savingsStreak = calculateStreak();
+
+  // Smart Forecast logic (Top 3 Potential Shortfalls for Next Month based on 6-month data)
+  const getSmartForecastShortfalls = () => {
+     const catAverages: Record<string, number> = {};
+     const sixMonthsAgo = new Date();
+     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+     
+     // calculate total per category over last 6 months
+     transactions.forEach((t: any) => {
+         if(t.type === 'expense' && new Date(t.date) >= sixMonthsAgo) {
+             const c = t.category || 'Other';
+             catAverages[c] = (catAverages[c] || 0) + t.amount;
+         }
+     });
+     
+     const shortfalls: any[] = [];
+     Object.keys(catAverages).forEach(cat => {
+         const avgMonthly = catAverages[cat] / 6;
+         const dbBudget = budgets.find((b: any) => b.category?.toLowerCase() === cat.toLowerCase());
+         const limit = dbBudget ? dbBudget.limit_amount : (cat === 'Food' ? 500 : cat === 'Utilities' ? 250 : cat === 'Entertainment' ? 300 : cat === 'Housing' ? 1200 : cat === 'Transport' ? 150 : cat === 'Shopping' ? 350 : cat === 'Investment' ? 400 : 200);
+         
+         if (avgMonthly > limit * 1.05) { // Predicted to overspend by > 5%
+             shortfalls.push({ category: cat, projected: Math.round(avgMonthly), limit, overspend: Math.round(avgMonthly - limit) });
+         }
+     });
+     return shortfalls.sort((a, b) => b.overspend - a.overspend).slice(0, 3);
+  };
+  const smartShortfalls = getSmartForecastShortfalls();
+
+  // Widget Manager Preferences
+  const [activeWidgets, setActiveWidgets] = useState<string[]>([]);
+  useEffect(() => {
+    const stored = localStorage.getItem('dashboard_widgets');
+    if (stored) setActiveWidgets(JSON.parse(stored));
+    else setActiveWidgets(['savings_goal', 'smart_forecast', 'ai_insights', 'quick_actions']);
+  }, []);
+
+  const isWidgetActive = (id: string) => activeWidgets.includes(id);
+
   if (!isBiometricPassed) {
     return (
       <div className="fixed inset-0 z-[100] bg-[#020205] flex flex-col items-center justify-center p-6 text-white font-sans overflow-hidden">
@@ -731,7 +796,7 @@ export default function Dashboard() {
   const approachingBudgets = getApproachingBudgets();
 
   return (
-    <div className="space-y-6 relative pb-12">
+    <div className="flex flex-col gap-6 relative pb-12">
       {/* Toast Notification */}
       <AnimatePresence>
         {showToast && (
@@ -757,9 +822,118 @@ export default function Dashboard() {
 
       {/* Welcome & AI Summary Insight Banner */}
       <div className="flex flex-col gap-4">
-        <div>
-          <h2 className="text-3xl font-display font-bold text-white">Welcome back, {user?.name?.split(' ')[0]}</h2>
-          <p className="text-white/50 mt-1">Here is your financial overview.</p>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+          <div>
+            <h2 className="text-3xl font-display font-bold text-white">Welcome back, {user?.name?.split(' ')[0]}</h2>
+            <p className="text-white/50 mt-1">Here is your financial overview.</p>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            {/* Savings Streak Widget */}
+            <div className="flex items-center gap-3 p-2.5 px-4 bg-gradient-to-r from-orange-500/10 to-amber-500/10 border border-orange-500/20 rounded-2xl shadow-[0_0_15px_rgba(249,115,22,0.1)]">
+              <div className="relative">
+                <span className="text-3xl filter drop-shadow-lg">🔥</span>
+                {savingsStreak >= 7 && (
+                  <span className="absolute -top-2 -right-2 bg-amber-400 text-black text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-black animate-pulse">HOT</span>
+                )}
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-orange-400 font-bold leading-none mb-1">Savings Streak</span>
+                <span className="text-sm text-white font-mono font-bold leading-none">{savingsStreak} Days <span className="text-white/40 text-xs font-sans font-normal ml-0.5">under budget</span></span>
+              </div>
+            </div>
+
+            {/* Widget Manager Button */}
+            <Dialog>
+              <DialogTrigger className={cn(buttonVariants({ variant: 'outline' }), "bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-2xl h-full py-3")}>
+                 <LayoutDashboard className="w-4 h-4 mr-2" /> Widgets
+              </DialogTrigger>
+              <DialogContent className="glass-card border-white/10 text-white max-w-sm">
+                <DialogHeader>
+                  <DialogTitle>Dashboard Layout</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <p className="text-xs text-white/50 uppercase tracking-widest font-mono">Toggle & Reorder Widgets</p>
+                  {activeWidgets.map((widgetId, idx) => {
+                     const wName = {
+                        'savings_goal': 'Milestone Savings Goal',
+                        'smart_forecast': 'Smart Forecast & Shortfalls',
+                        'ai_insights': 'Category Progress & Deviations',
+                        'cash_flow': 'Cash Flow & Income',
+                        'recent_tx': 'Recent Transactions'
+                     }[widgetId] || widgetId;
+                     
+                     return (
+                      <div key={widgetId} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/10">
+                        <div className="flex items-center gap-2">
+                           <button 
+                             onClick={() => {
+                               if (idx > 0) {
+                                 const copy = [...activeWidgets];
+                                 const temp = copy[idx - 1]; copy[idx - 1] = copy[idx]; copy[idx] = temp;
+                                 setActiveWidgets(copy); localStorage.setItem('dashboard_widgets', JSON.stringify(copy));
+                               }
+                             }}
+                             className="text-white/40 hover:text-white"
+                           >↑</button>
+                           <button 
+                             onClick={() => {
+                               if (idx < activeWidgets.length - 1) {
+                                 const copy = [...activeWidgets];
+                                 const temp = copy[idx + 1]; copy[idx + 1] = copy[idx]; copy[idx] = temp;
+                                 setActiveWidgets(copy); localStorage.setItem('dashboard_widgets', JSON.stringify(copy));
+                               }
+                             }}
+                             className="text-white/40 hover:text-white"
+                           >↓</button>
+                           <span className="text-sm text-white font-medium ml-2">{wName}</span>
+                        </div>
+                        <input 
+                          type="checkbox" 
+                          checked={true}
+                          onChange={(e) => {
+                            if (!e.target.checked) {
+                              const updated = activeWidgets.filter(w => w !== widgetId);
+                              setActiveWidgets(updated); localStorage.setItem('dashboard_widgets', JSON.stringify(updated));
+                            }
+                          }}
+                          className="w-4 h-4 rounded border-white/20 accent-cyan-400 cursor-pointer"
+                        />
+                      </div>
+                     );
+                  })}
+                  
+                  {['savings_goal', 'smart_forecast', 'ai_insights', 'cash_flow', 'recent_tx']
+                    .filter(id => !activeWidgets.includes(id))
+                    .map(widgetId => {
+                     const wName = {
+                        'savings_goal': 'Milestone Savings Goal',
+                        'smart_forecast': 'Smart Forecast & Shortfalls',
+                        'ai_insights': 'Category Progress & Deviations',
+                        'cash_flow': 'Cash Flow & Income',
+                        'recent_tx': 'Recent Transactions'
+                     }[widgetId] || widgetId;
+                     return (
+                      <div key={widgetId} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/10 opacity-50">
+                        <span className="text-sm text-white font-medium pl-10">{wName}</span>
+                        <input 
+                          type="checkbox" 
+                          checked={false}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              const updated = [...activeWidgets, widgetId];
+                              setActiveWidgets(updated); localStorage.setItem('dashboard_widgets', JSON.stringify(updated));
+                            }
+                          }}
+                          className="w-4 h-4 rounded border-white/20 accent-cyan-400 cursor-pointer"
+                        />
+                      </div>
+                     );
+                  })}
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         {/* Approaching Budget Limits Notification Badge & Service Alerts */}
@@ -958,10 +1132,13 @@ export default function Dashboard() {
       </div>
 
       {/* AI-Driven Forecast Projection Component */}
+      {isWidgetActive('smart_forecast') && (
       <motion.div 
         initial={{ opacity: 0, y: 20 }} 
         animate={{ opacity: 1, y: 0 }} 
         transition={{ delay: 0.35 }}
+        style={{ order: activeWidgets.indexOf('smart_forecast') }}
+        className="w-full flex-shrink-0"
       >
         <Card className="glass-card border-none overflow-hidden relative">
           <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none">
@@ -1016,42 +1193,39 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Reasons / Bullet Explanations */}
-                  <div className="md:col-span-4 space-y-3 flex flex-col justify-center">
-                    <h4 className="text-xs font-mono uppercase text-white/50 tracking-wider">Ceiling Rationalization</h4>
-                    <div className="space-y-2.5">
-                      {(forecastData?.reasons || []).map((reason: string, idx: number) => (
-                        <div key={idx} className="flex gap-3 text-xs text-white/80 leading-relaxed items-start">
-                          <div className="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 shrink-0 shadow-[0_0_6px_rgba(168,85,247,0.8)]" />
-                          <p>{reason}</p>
-                        </div>
-                      ))}
+                  {/* Predicted Shortfalls based on 6 month history */}
+                  <div className="md:col-span-8 space-y-3 flex flex-col justify-center">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-xs font-mono uppercase text-white/50 tracking-wider">Top Potential Shortfalls Next Month</h4>
+                      <span className="px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-[9px] font-mono tracking-widest font-bold">6-MONTH TREND-BASED</span>
                     </div>
-                  </div>
-
-                  {/* Category Outlay Distribution List */}
-                  <div className="md:col-span-4 space-y-3 flex flex-col justify-center">
-                    <h4 className="text-xs font-mono uppercase text-white/50 tracking-wider">Projected Category Breakdown</h4>
-                    <div className="space-y-2">
-                      {(forecastData?.categoryBreakdown || []).slice(0, 4).map((item: any, idx: number) => {
-                        const percentages = [40, 25, 20, 15];
-                        return (
-                          <div key={idx} className="space-y-1">
-                            <div className="flex justify-between text-xs font-mono text-white/70">
-                              <span>{item.category}</span>
-                              <span className="text-white font-bold">{formatAmount(item.projectedAmount)}</span>
-                            </div>
-                            <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                              <motion.div 
-                                initial={{ width: 0 }}
-                                animate={{ width: `${percentages[idx] || 20}%` }}
-                                className="h-full bg-cyan-400"
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                    {smartShortfalls.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {smartShortfalls.map((sf, i) => (
+                           <div key={i} className="p-3 bg-red-500/5 border border-red-500/10 rounded-xl space-y-2 relative overflow-hidden">
+                             <div className="absolute top-0 right-0 p-2 opacity-10">
+                               <AlertCircle className="w-8 h-8 text-red-500" />
+                             </div>
+                             <span className="text-xs font-bold text-white relative z-10">{sf.category}</span>
+                             <div className="relative z-10 space-y-1">
+                               <p className="text-[10px] text-white/50 font-mono uppercase tracking-widest">Projected vs Limit</p>
+                               <div className="flex items-center gap-2">
+                                  <span className="font-mono text-red-400 font-bold">{formatAmount(sf.projected)}</span>
+                                  <span className="text-white/30 text-xs">/</span>
+                                  <span className="font-mono text-white/70">{formatAmount(sf.limit)}</span>
+                               </div>
+                               <p className="text-[10px] text-red-400 mt-2 font-bold">+ {formatAmount(sf.overspend)} predicted over budget</p>
+                             </div>
+                           </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-4 rounded-xl border border-dashed border-emerald-500/30 bg-emerald-500/5 text-center space-y-1">
+                        <Trophy className="w-5 h-5 text-emerald-400 mx-auto" />
+                        <p className="text-sm text-white font-medium">Looking Good!</p>
+                        <p className="text-xs text-emerald-400/70">Historical 6-month trends show no likely budget overspends next month.</p>
+                      </div>
+                    )}
                   </div>
 
                 </div>
@@ -1118,12 +1292,16 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </motion.div>
+      )}
 
       {/* Interactive Savings Goal Accelerator & Micro-Savings Planner */}
+      {isWidgetActive('savings_goal') && (
       <motion.div 
         initial={{ opacity: 0, y: 20 }} 
         animate={{ opacity: 1, y: 0 }} 
         transition={{ delay: 0.38 }}
+        style={{ order: activeWidgets.indexOf('savings_goal') }}
+        className="w-full flex-shrink-0"
       >
         <Card className="glass-card border-none overflow-hidden relative">
           <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none">
@@ -1341,14 +1519,18 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </motion.div>
+      )}
 
       {/* Automated AI Budget Health Monitor & Category Progress Centre */}
+      {isWidgetActive('ai_insights') && (
       <motion.div 
         initial={{ opacity: 0, y: 20 }} 
         animate={{ opacity: 1, y: 0 }} 
         transition={{ delay: 0.39 }}
+        style={{ order: activeWidgets.indexOf('ai_insights') }}
+        className="w-full flex-shrink-0"
       >
-        <Card className="glass-card border-none overflow-hidden mt-6">
+        <Card className="glass-card border-none overflow-hidden">
           <CardHeader className="pb-3 border-b border-white/5">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
               <div className="flex items-center gap-2">
@@ -1373,9 +1555,12 @@ export default function Dashboard() {
               <div className="lg:col-span-7 space-y-4">
                 <h4 className="text-xs font-mono text-cyan-400 uppercase tracking-widest font-bold">Category Budgets</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {["Food", "Utilities", "Entertainment", "Housing", "Transport", "Shopping", "Investment"].map((cat) => {
+                  {Array.from(new Set([
+                    ...["Food", "Utilities", "Entertainment", "Housing", "Transport", "Shopping", "Investment"],
+                    ...(budgets.map((b: any) => b.category))
+                  ])).map((cat: any) => {
                     const dbBudget = budgets.find((b: any) => b.category?.toLowerCase() === cat.toLowerCase());
-                    const limit = dbBudget ? dbBudget.limit_amount : (cat === 'Food' ? 500 : cat === 'Utilities' ? 250 : cat === 'Entertainment' ? 300 : cat === 'Housing' ? 1200 : cat === 'Transport' ? 150 : cat === 'Shopping' ? 350 : 400);
+                    const limit = dbBudget ? dbBudget.limit_amount : (cat === 'Food' ? 500 : cat === 'Utilities' ? 250 : cat === 'Entertainment' ? 300 : cat === 'Housing' ? 1200 : cat === 'Transport' ? 150 : cat === 'Shopping' ? 350 : cat === 'Investment' ? 400 : 200);
                     const spent = transactions
                       .filter((t: any) => t.type === 'expense' && t.category?.toLowerCase() === cat.toLowerCase())
                       .reduce((acc: number, t: any) => acc + t.amount, 0);
@@ -1431,9 +1616,12 @@ export default function Dashboard() {
                   {(() => {
                     const deviationAlerts: any[] = [];
                     
-                    ["Food", "Utilities", "Entertainment", "Housing", "Transport", "Shopping", "Investment"].forEach((cat) => {
+                  Array.from(new Set([
+                    ...["Food", "Utilities", "Entertainment", "Housing", "Transport", "Shopping", "Investment"],
+                    ...(budgets.map((b: any) => b.category))
+                  ])).forEach((cat: any) => {
                       const dbBudget = budgets.find((b: any) => b.category?.toLowerCase() === cat.toLowerCase());
-                      const limit = dbBudget ? dbBudget.limit_amount : (cat === 'Food' ? 500 : cat === 'Utilities' ? 250 : cat === 'Entertainment' ? 300 : cat === 'Housing' ? 1200 : cat === 'Transport' ? 150 : cat === 'Shopping' ? 350 : 400);
+                      const limit = dbBudget ? dbBudget.limit_amount : (cat === 'Food' ? 500 : cat === 'Utilities' ? 250 : cat === 'Entertainment' ? 300 : cat === 'Housing' ? 1200 : cat === 'Transport' ? 150 : cat === 'Shopping' ? 350 : cat === 'Investment' ? 400 : 200);
                       const spent = transactions
                         .filter((t: any) => t.type === 'expense' && t.category?.toLowerCase() === cat.toLowerCase())
                         .reduce((acc: number, t: any) => acc + t.amount, 0);
@@ -1520,8 +1708,13 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </motion.div>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {isWidgetActive('cash_flow') && (
+      <div 
+        className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full flex-shrink-0"
+        style={{ order: activeWidgets.indexOf('cash_flow') }}
+      >
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="lg:col-span-2">
           <Card className="glass-card border-none h-[100%]">
             <CardHeader>
@@ -1624,6 +1817,7 @@ export default function Dashboard() {
           </motion.div>
         </div>
       </div>
+      )}
 
       {/* Voice Recording Active HUD Overlay */}
       <AnimatePresence>

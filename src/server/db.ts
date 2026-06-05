@@ -70,6 +70,9 @@ export default function initDb() {
     db.exec("ALTER TABLE transactions ADD COLUMN notes TEXT;");
   } catch (e) {}
   try {
+    db.exec("ALTER TABLE transactions ADD COLUMN tags TEXT;");
+  } catch (e) {}
+  try {
     db.exec("ALTER TABLE subscriptions ADD COLUMN is_active INTEGER DEFAULT 1;");
   } catch (e) {}
 }

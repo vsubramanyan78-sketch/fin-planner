@@ -21,6 +21,13 @@ export default function Transactions() {
   const [searchQuery, setSearchQuery] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  
+  // Custom Tags Filter state
+  const [filterTags, setFilterTags] = useState<string[]>([]);
+
+  // Bulk Operations State
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkCategory, setBulkCategory] = useState('Food');
 
   // Currency Converter Widget State
   const [convAmount, setConvAmount] = useState('100');
@@ -39,6 +46,8 @@ export default function Transactions() {
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState('monthly');
   const [formError, setFormError] = useState('');
+  const [tagInput, setTagInput] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
 
   // AI Auto-Tagging state
   const [isTagging, setIsTagging] = useState(false);
@@ -49,8 +58,12 @@ export default function Transactions() {
   const [transcript, setTranscript] = useState('');
   const [voiceError, setVoiceError] = useState('');
   const [voiceSuccess, setVoiceSuccess] = useState(false);
+  const [voiceSummaryText, setVoiceSummaryText] = useState('');
   const recognitionRef = useRef<any>(null);
   const transcriptRef = useRef('');
+
+  // Modals state
+  const [showBulkConfirm, setShowBulkConfirm] = useState<'delete' | 'category' | null>(null);
 
   // Intelligent parser for Web Speech commands
   const parseVoiceCommand = (sentence: string) => {
@@ -161,32 +174,61 @@ export default function Transactions() {
           if (rawText.trim().length > 0) {
              setVoiceSuccess(true);
              
-             // Run voice-command logic optimizer
-             const payload = parseVoiceCommand(rawText);
-             
-             fetch('/api/transactions', {
-                method: 'POST',
-                headers: { 
-                  'Authorization': `Bearer ${token}`,
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  amount: payload.amount,
-                  type: payload.type,
-                  title: payload.title,
-                  category: payload.category,
-                  date: new Date().toISOString()
-                })
-             }).then(() => {
-                  window.dispatchEvent(new Event('transactionAdded'));
-             }).catch(console.error);
-  
-             setTimeout(() => {
-               setVoiceSuccess(false);
-               setTranscript('');
-               transcriptRef.current = '';
-               loadTransactions();
-             }, 3500);
+             // Check if user is asking for a summary text readout
+             const t = rawText.toLowerCase();
+             if (t.includes('summary') || t.includes('spending') || t.includes('spent') || t.includes('how much')) {
+                // Calculate quick summary by fetching latest
+                fetch('/api/transactions', { headers: { 'Authorization': `Bearer ${token}` } })
+                  .then(r => r.json())
+                  .then(res => {
+                     const txs = res.transactions || [];
+                     const currMonth = new Date().getMonth();
+                     let sum = 0;
+                     txs.forEach((tx: any) => {
+                        if (tx.type === 'expense' && new Date(tx.date).getMonth() === currMonth) sum += tx.amount;
+                     });
+                     
+                     const msg = `You have spent ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(sum)} this month.`;
+                     setVoiceSummaryText(msg);
+                     const utterance = new SpeechSynthesisUtterance(msg);
+                     window.speechSynthesis.speak(utterance);
+                     
+                     setTimeout(() => {
+                       setVoiceSummaryText('');
+                       setVoiceSuccess(false);
+                       setTranscript('');
+                       transcriptRef.current = '';
+                     }, 5000);
+                  });
+             } else {
+               // Run voice-command logic optimizer for normal transaction
+               const payload = parseVoiceCommand(rawText);
+               
+               fetch('/api/transactions', {
+                  method: 'POST',
+                  headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({
+                    amount: payload.amount,
+                    type: payload.type,
+                    title: payload.title,
+                    category: payload.category,
+                    date: new Date().toISOString(),
+                    tags: []
+                  })
+               }).then(() => {
+                    window.dispatchEvent(new Event('transactionAdded'));
+               }).catch(console.error);
+    
+               setTimeout(() => {
+                 setVoiceSuccess(false);
+                 setTranscript('');
+                 transcriptRef.current = '';
+                 loadTransactions();
+               }, 3500);
+             }
           }
         };
       }
@@ -273,6 +315,7 @@ export default function Transactions() {
           is_recurring: isRecurring,
           recurring_frequency: isRecurring ? recurringFrequency : null,
           notes,
+          tags,
         }),
       });
 
@@ -287,6 +330,7 @@ export default function Transactions() {
       setCategory('Food');
       setDate(format(new Date(), 'yyyy-MM-dd'));
       setNotes('');
+      setTags([]);
       setIsRecurring(false);
       setRecurringFrequency('monthly');
       setIsAddOpen(false);
@@ -324,8 +368,69 @@ export default function Transactions() {
       }
     }
 
-    return matchesSearch && matchesDate;
+    // 3. Custom tags
+    let matchesTags = true;
+    if (filterTags.length > 0) {
+      const txTags = tx.tags ? JSON.parse(tx.tags) : [];
+      matchesTags = filterTags.some(tag => txTags.includes(tag));
+    }
+
+    return matchesSearch && matchesDate && matchesTags;
   });
+
+  const extractAllTags = () => {
+    const allTags = new Set<string>();
+    data.forEach((tx: any) => {
+      if (tx.tags) {
+        try {
+          JSON.parse(tx.tags).forEach((t: string) => allTags.add(t));
+        } catch(e) {}
+      }
+    });
+    return Array.from(allTags);
+  };
+  const availableTags = extractAllTags();
+
+  // Bulk Operations
+  const toggleSelectAll = () => {
+    if (selectedIds.length === filteredData.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredData.map((t: any) => t.id));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    try {
+      await fetch('/api/transactions/bulk', {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedIds })
+      });
+      setSelectedIds([]);
+      setShowBulkConfirm(null);
+      loadTransactions();
+    } catch(e) {}
+  };
+
+  const handleBulkCategory = async () => {
+    if (selectedIds.length === 0) return;
+    try {
+      await fetch('/api/transactions/bulk-category', {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedIds, category: bulkCategory })
+      });
+      setSelectedIds([]);
+      setShowBulkConfirm(null);
+      loadTransactions();
+    } catch(e) {}
+  };
 
   const exportCSV = () => {
     const target = filteredData;
@@ -467,6 +572,33 @@ export default function Transactions() {
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="Optional details or note content..."
                     className="bg-white/5 border-white/10 text-white rounded-lg"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-white/70">Tags</Label>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {tags.map((tag, idx) => (
+                      <span key={idx} className="px-2 py-1 bg-white/10 rounded-full text-[10px] text-white flex items-center gap-1 font-mono">
+                        #{tag}
+                        <button type="button" onClick={() => setTags(tags.filter((_, i) => i !== idx))} className="text-white/50 hover:text-red-400 ml-1">✕</button>
+                      </span>
+                    ))}
+                  </div>
+                  <Input
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (tagInput.trim() && !tags.includes(tagInput.trim().toLowerCase())) {
+                          setTags([...tags, tagInput.trim().toLowerCase()]);
+                          setTagInput('');
+                        }
+                      }
+                    }}
+                    placeholder="Type a tag and press Enter"
+                    className="bg-white/5 border-white/10 text-white rounded-lg text-sm"
                   />
                 </div>
 
@@ -627,6 +759,20 @@ export default function Transactions() {
             className="pl-10 bg-white/5 border-white/10 text-white placeholder:text-white/40 rounded-xl py-5"
           />
         </div>
+        <div className="flex flex-wrap gap-2 items-center bg-white/5 p-2 rounded-xl border border-white/10">
+          {availableTags.map(tag => (
+            <button
+              key={tag}
+              onClick={() => {
+                if (filterTags.includes(tag)) setFilterTags(filterTags.filter(t => t !== tag));
+                else setFilterTags([...filterTags, tag]);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-[10px] font-mono tracking-wider font-bold transition-all cursor-pointer ${filterTags.includes(tag) ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40' : 'bg-black/20 text-white/50 hover:text-white/80 border border-white/5 hover:bg-black/40'}`}
+            >
+              #{tag}
+            </button>
+          ))}
+        </div>
         <div className="flex flex-wrap items-center gap-3 bg-white/5 border border-white/10 p-2.5 rounded-xl">
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] font-mono uppercase tracking-wider text-white/40">From</span>
@@ -646,12 +792,13 @@ export default function Transactions() {
               className="bg-[#0f172a] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400"
             />
           </div>
-          {(startDate || endDate || searchQuery) && (
+          {(startDate || endDate || searchQuery || filterTags.length > 0) && (
             <Button 
               onClick={() => {
                 setStartDate('');
                 setEndDate('');
                 setSearchQuery('');
+                setFilterTags([]);
               }}
               size="sm"
               variant="ghost" 
@@ -663,9 +810,83 @@ export default function Transactions() {
         </div>
       </div>
 
+      {selectedIds.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="p-3 bg-cyan-950/30 border border-cyan-500/20 rounded-xl flex flex-wrap items-center gap-4">
+          <span className="text-sm font-mono text-cyan-400 font-bold">{selectedIds.length} selected</span>
+          <select
+            value={bulkCategory}
+            onChange={(e) => setBulkCategory(e.target.value)}
+            className="bg-slate-900 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white"
+          >
+            <option value="Food">Food</option>
+            <option value="Utilities">Utilities</option>
+            <option value="Entertainment">Entertainment</option>
+            <option value="Housing">Housing</option>
+            <option value="Salary">Salary</option>
+            <option value="Transport">Transport</option>
+            <option value="Shopping">Shopping</option>
+            <option value="Investment">Investment</option>
+            <option value="Other">Other</option>
+          </select>
+          <Button onClick={() => setShowBulkConfirm('category')} size="sm" className="bg-white/10 hover:bg-white/20 text-white text-xs h-8">Assign Category</Button>
+          <Button onClick={() => setShowBulkConfirm('delete')} size="sm" className="bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/20 text-xs h-8 ml-auto">Delete Selected</Button>
+        </motion.div>
+      )}
+
+      {/* Bulk Delete Confirm Modal */}
+      <Dialog open={showBulkConfirm === 'delete'} onOpenChange={(val) => !val && setShowBulkConfirm(null)}>
+        <DialogContent className="glass-card border-white/10 text-white max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-red-400" />
+              Confirm Deletion
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-white/70 text-sm mt-2">
+            Are you sure you want to permanently delete {selectedIds.length} transaction{selectedIds.length !== 1 && 's'}? 
+            This action cannot be undone.
+          </p>
+          <div className="flex justify-end gap-3 mt-6">
+            <Button variant="ghost" onClick={() => setShowBulkConfirm(null)} className="text-white/60 hover:text-white">Cancel</Button>
+            <Button onClick={handleBulkDelete} className="bg-red-500 hover:bg-red-600 text-white">Delete All</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Category Confirm Modal */}
+      <Dialog open={showBulkConfirm === 'category'} onOpenChange={(val) => !val && setShowBulkConfirm(null)}>
+        <DialogContent className="glass-card border-white/10 text-white max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wallet className="w-5 h-5 text-cyan-400" />
+              Confirm Re-categorization
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-white/70 text-sm mt-2">
+            Are you sure you want to change the category for {selectedIds.length} transaction{selectedIds.length !== 1 && 's'} to 
+            <span className="font-bold text-cyan-400 ml-1">{bulkCategory}</span>?
+          </p>
+          <div className="flex justify-end gap-3 mt-6">
+            <Button variant="ghost" onClick={() => setShowBulkConfirm(null)} className="text-white/60 hover:text-white">Cancel</Button>
+            <Button onClick={handleBulkCategory} className="bg-cyan-500 hover:bg-cyan-600 text-white">Confirm</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Card className="glass-card border-none">
         <CardContent className="p-0 sm:p-6">
           <div className="divide-y divide-border/20">
+            {filteredData.length > 0 && (
+              <div className="p-4 flex items-center gap-4 bg-white/5">
+                <input 
+                  type="checkbox" 
+                  checked={filteredData.length > 0 && selectedIds.length === filteredData.length}
+                  onChange={toggleSelectAll}
+                  className="w-4 h-4 rounded border-white/20 cursor-pointer"
+                />
+                <span className="text-xs font-mono text-white/50 uppercase tracking-widest font-bold">Select All</span>
+              </div>
+            )}
             {filteredData.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground">No transactions match your criteria.</div>
             ) : (
@@ -675,10 +896,16 @@ export default function Transactions() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.05 }}
                   key={tx.id} 
-                  className="p-4 flex items-center justify-between hover:bg-white/5 transition-colors"
+                  className={`p-4 flex items-center justify-between transition-colors ${selectedIds.includes(tx.id) ? 'bg-cyan-500/10' : 'hover:bg-white/5'}`}
                 >
                   <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg ${tx.type === 'income' ? 'bg-emerald-500/20 text-emerald-500 border border-emerald-500/30' : 'bg-red-500/20 text-red-500 border border-red-500/30'}`}>
+                    <input 
+                      type="checkbox"
+                      checked={selectedIds.includes(tx.id)}
+                      onChange={() => toggleSelect(tx.id)}
+                      className="w-4 h-4 rounded border-white/20 cursor-pointer shrink-0"
+                    />
+                    <div className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center shadow-lg ${tx.type === 'income' ? 'bg-emerald-500/20 text-emerald-500 border border-emerald-500/30' : 'bg-red-500/20 text-red-500 border border-red-500/30'}`}>
                       {tx.type === 'income' ? <ArrowUpRight className="w-5 h-5" /> : <ArrowDownRight className="w-5 h-5" />}
                     </div>
                     <div>
@@ -695,6 +922,21 @@ export default function Transactions() {
                             </span>
                           </>
                         ) : null}
+                        {tx.tags && (() => {
+                          let tA = [];
+                          try { tA = JSON.parse(tx.tags); } catch(e){}
+                          if (tA.length === 0) return null;
+                          return (
+                            <>
+                              <span>•</span>
+                              <span className="flex items-center gap-1">
+                                {tA.map((t: string, i: number) => (
+                                  <span key={i} className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-white/10 border border-white/20 text-white/80">#{t}</span>
+                                ))}
+                              </span>
+                            </>
+                          );
+                        })()}
                       </div>
                       {tx.notes && (
                         <p className="text-xs text-white/40 mt-1 italic">"{tx.notes}"</p>
@@ -725,6 +967,16 @@ export default function Transactions() {
                 <div className="flex items-start gap-3">
                   <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
                   <p className="text-sm text-red-400">{voiceError}</p>
+                </div>
+              ) : voiceSummaryText ? (
+                 <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-cyan-500/20 flex items-center justify-center shrink-0 border border-cyan-500/30">
+                    <Check className="w-4 h-4 text-cyan-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-white font-medium mb-1">Financial Summary</p>
+                    <p className="text-xs text-cyan-300 leading-snug">{voiceSummaryText}</p>
+                  </div>
                 </div>
               ) : voiceSuccess ? (
                 <div className="flex items-start gap-3">

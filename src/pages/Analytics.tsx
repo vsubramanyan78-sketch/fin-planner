@@ -32,9 +32,12 @@ const SkeletonLoader = () => (
 const CustomTooltip = ({ active, payload, label }: any) => {
   const { formatAmount } = useCurrency();
   if (active && payload && payload.length) {
+    const dataObj = payload[0].payload;
     return (
-      <div className="bg-[#020203]/90 backdrop-blur-md border border-white/10 p-3 rounded-xl shadow-xl">
-        <p className="text-white/70 text-xs mb-2 font-medium uppercase tracking-wider">{label}</p>
+      <div className="bg-[#020203]/90 backdrop-blur-md border border-white/10 p-3 rounded-xl shadow-xl z-50 min-w-[200px]">
+        <p className="text-white/70 text-xs mb-2 font-medium uppercase tracking-wider">
+          {dataObj.dateRange ? dataObj.dateRange : label}
+        </p>
         {payload.map((entry: any, index: number) => (
           <div key={index} className="flex items-center gap-3 mt-1.5">
             <div className="w-2 h-2 rounded-full shadow-[0_0_8px_currentColor]" style={{ color: entry.color, backgroundColor: entry.color }} />
@@ -44,6 +47,22 @@ const CustomTooltip = ({ active, payload, label }: any) => {
             <span className="text-xs text-white/50 uppercase tracking-wider">{entry.name}</span>
           </div>
         ))}
+        {dataObj.topTransactions && dataObj.topTransactions.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-white/10">
+            <span className="text-[10px] text-white/40 uppercase tracking-widest font-bold block mb-1">Key Transactions</span>
+            <div className="space-y-1.5">
+              {dataObj.topTransactions.map((tx: any, i: number) => (
+                <div key={i} className="flex items-center justify-between gap-4 text-xs">
+                  <span className="text-white/70 truncate max-w-[120px]">{tx.title}</span>
+                  <div className="text-right flex flex-col items-end">
+                     <span className="text-emerald-400 font-mono">{formatAmount(tx.amount)}</span>
+                     <span className="text-[9px] text-white/40">{new Date(tx.date).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -57,6 +76,7 @@ export default function Analytics() {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [budgets, setBudgets] = useState<any[]>([]);
   const [downloading, setDownloading] = useState(false);
+  const [spendingInsight, setSpendingInsight] = useState<string>("Analyzing your latest spending velocity...");
 
   // What-If Simulation State
   const [whatIfContribution, setWhatIfContribution] = useState(250);
@@ -79,6 +99,16 @@ export default function Analytics() {
     })
     .then(r => r.json())
     .then(data => setBudgets(data.budgets || []));
+
+    fetch('/api/ai/spending-insights', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.insight) setSpendingInsight(data.insight);
+    }).catch(() => {
+      setSpendingInsight("Your expense speed is stable. Consider checking budget limits.");
+    });
   }, [token]);
 
   useEffect(() => {
@@ -399,18 +429,24 @@ export default function Analytics() {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const mName = d.toLocaleString('default', { month: 'short' });
       
-      const spend = transactions
+      const txsInMonth = transactions
         .filter((t: any) => {
           if (t.type !== 'expense' || !t.date) return false;
           const txDate = new Date(t.date);
           return txDate.getFullYear() === d.getFullYear() && txDate.getMonth() === d.getMonth();
-        })
-        .reduce((sum: number, t: any) => sum + t.amount, 0);
+        });
+      
+      const spend = txsInMonth.reduce((sum: number, t: any) => sum + t.amount, 0);
+      
+      // Get top 3 transactions to display exact amounts & dates in Tooltip
+      const sortedTxs = [...txsInMonth].sort((a, b) => b.amount - a.amount).slice(0, 3);
         
       dataList.push({
         name: mName,
         spend: spend,
-        budget: 3500 // standard ceiling limit
+        budget: 3500, // standard ceiling limit
+        dateRange: `${d.toLocaleString('default', { month: 'long', year: 'numeric' })}`,
+        topTransactions: sortedTxs
       });
     }
     return dataList;
@@ -505,7 +541,7 @@ export default function Analytics() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-white/80 leading-relaxed">We detected you can save <span className="text-white font-bold font-mono">~{formatAmount(400)}</span> this month by curbing dining out expenses on weekends.</p>
+              <p className="text-sm text-white/80 leading-relaxed">{spendingInsight}</p>
             </CardContent>
           </Card>
         </motion.div>
