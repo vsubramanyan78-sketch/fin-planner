@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/src/context/AuthContext';
 import { useCurrency } from '@/src/context/CurrencyContext';
 import { useTheme } from '@/src/context/ThemeContext';
-import { User, Bell, Shield, Repeat, Plus, PieChart, Sun, Moon } from 'lucide-react';
+import { User, Bell, Shield, Repeat, Plus, PieChart, Sun, Moon, ShieldCheck, Fingerprint } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 const mockSubscriptions: any[] = [];
@@ -17,6 +17,7 @@ export default function Settings() {
   const { user, logout, token } = useAuth();
   const { formatAmount } = useCurrency();
   const [activeTab, setActiveTab] = useState<'general' | 'subscriptions' | 'budgets'>('general');
+  const [biometricEnabled, setBiometricEnabled] = useState(() => localStorage.getItem('biometric_auth_enabled') === 'true');
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [budgets, setBudgets] = useState<any[]>([]);
   
@@ -175,6 +176,41 @@ export default function Settings() {
                   <div className="w-10 h-6 bg-cyan-400 rounded-full relative cursor-pointer shadow-[0_0_10px_rgba(34,211,238,0.3)]">
                     <div className="w-5 h-5 bg-black rounded-full absolute right-0.5 top-0.5 shadow-sm"></div>
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card border-none">
+              <CardHeader className="flex flex-row items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-cyan-400/20 flex flex-col items-center justify-center text-cyan-400 border border-cyan-400/30">
+                  <Fingerprint className="w-6 h-6" />
+                </div>
+                <div>
+                  <CardTitle className="text-white/90">Security Protocols</CardTitle>
+                  <CardDescription className="text-white/50">Configure credential locks and secure gates.</CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/10">
+                  <div>
+                    <h4 className="font-medium text-white/90">Biometric Secure Gate</h4>
+                    <p className="text-xs sm:text-sm text-white/50 pr-4">Require biometric Face ID / Touch ID verification before loading sensitive dashboard balances.</p>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      const nextVal = !biometricEnabled;
+                      localStorage.setItem('biometric_auth_enabled', nextVal ? 'true' : 'false');
+                      setBiometricEnabled(nextVal);
+                      
+                      // Also clear local session token if turning off, so it resets
+                      if (!nextVal) {
+                        sessionStorage.removeItem('biometric_authorized_session');
+                      }
+                    }}
+                    className={`w-10 h-6 rounded-full relative transition-all duration-300 shrink-0 cursor-pointer ${biometricEnabled ? 'bg-[#22d3ee] shadow-[0_0_12px_rgba(34,211,238,0.4)]' : 'bg-white/10'}`}
+                  >
+                    <div className={`w-5 h-5 bg-black rounded-full absolute duration-300 top-0.5 shadow-sm ${biometricEnabled ? 'right-0.5' : 'left-0.5'}`} />
+                  </button>
                 </div>
               </CardContent>
             </Card>

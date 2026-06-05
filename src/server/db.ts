@@ -33,6 +33,9 @@ export default function initDb() {
       category TEXT,
       title TEXT,
       date TEXT,
+      is_recurring INTEGER DEFAULT 0,
+      recurring_frequency TEXT,
+      notes TEXT,
       FOREIGN KEY(user_id) REFERENCES users(id)
     );
 
@@ -54,4 +57,15 @@ export default function initDb() {
       FOREIGN KEY(user_id) REFERENCES users(id)
     );
   `);
+
+  // Migrate existing transactions table if the columns do not exist
+  try {
+    db.exec("ALTER TABLE transactions ADD COLUMN is_recurring INTEGER DEFAULT 0;");
+  } catch (e) {}
+  try {
+    db.exec("ALTER TABLE transactions ADD COLUMN recurring_frequency TEXT;");
+  } catch (e) {}
+  try {
+    db.exec("ALTER TABLE transactions ADD COLUMN notes TEXT;");
+  } catch (e) {}
 }

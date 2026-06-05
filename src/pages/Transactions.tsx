@@ -1,11 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { format } from 'date-fns';
-import { ArrowUpRight, ArrowDownRight, Wallet, Download, Mic, MicOff, Check, AlertCircle } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, Wallet, Download, Mic, MicOff, Check, AlertCircle, Plus, Search } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { useCurrency } from '@/src/context/CurrencyContext';
 import { motion, AnimatePresence } from 'motion/react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 
 export default function Transactions() {
   const [data, setData] = useState<any[]>([]);
@@ -13,6 +17,21 @@ export default function Transactions() {
   const { formatAmount } = useCurrency();
   const [loading, setLoading] = useState(true);
   
+  // Real-time search query
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Add Transaction Form state
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [title, setTitle] = useState('');
+  const [amount, setAmount] = useState('');
+  const [type, setType] = useState('expense');
+  const [category, setCategory] = useState('Food');
+  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [notes, setNotes] = useState('');
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurringFrequency, setRecurringFrequency] = useState('monthly');
+  const [formError, setFormError] = useState('');
+
   // Voice input state
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -20,14 +39,20 @@ export default function Transactions() {
   const [voiceSuccess, setVoiceSuccess] = useState(false);
   const recognitionRef = useRef<any>(null);
 
-  useEffect(() => {
+  const loadTransactions = useCallback(() => {
     fetch('/api/transactions', {
       headers: { 'Authorization': `Bearer ${token}` }
     }).then(r => r.json()).then(res => {
       setData(res.transactions || []);
       setLoading(false);
     });
-    
+  }, [token]);
+
+  useEffect(() => {
+    loadTransactions();
+  }, [loadTransactions]);
+
+  useEffect(() => {
     // Initialize Speech Recognition
     if (typeof window !== 'undefined') {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -71,19 +96,13 @@ export default function Transactions() {
                   date: new Date().toISOString()
                 })
              }).then(() => {
-                 window.dispatchEvent(new Event('transactionAdded'));
+                  window.dispatchEvent(new Event('transactionAdded'));
              }).catch(console.error);
-
+ 
              setTimeout(() => {
                setVoiceSuccess(false);
                setTranscript('');
-               
-               // Reload local transactions
-               fetch('/api/transactions', {
-                 headers: { 'Authorization': `Bearer ${token}` }
-               }).then(r => r.json()).then(res => {
-                 setData(res.transactions || []);
-               });
+               loadTransactions();
              }, 3000);
           }
         };
@@ -95,7 +114,7 @@ export default function Transactions() {
          recognitionRef.current.abort();
       }
     };
-  }, [token, transcript]);
+  }, [token, transcript, loadTransactions]);
 
   const toggleListening = () => {
     setVoiceError('');
@@ -115,17 +134,81 @@ export default function Transactions() {
     }
   };
 
+  const handleAddTransaction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError('');
+    if (!title || !amount) {
+      setFormError('Please fill in title and amount.');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/transactions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title,
+          amount: parseFloat(amount),
+          type,
+          category,
+          date: date ? new Date(date).toISOString() : new Date().toISOString(),
+          is_recurring: isRecurring,
+          recurring_frequency: isRecurring ? recurringFrequency : null,
+          notes,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save transaction');
+      }
+
+      // Reset form fields
+      setTitle('');
+      setAmount('');
+      setType('expense');
+      setCategory('Food');
+      setDate(format(new Date(), 'yyyy-MM-dd'));
+      setNotes('');
+      setIsRecurring(false);
+      setRecurringFrequency('monthly');
+      setIsAddOpen(false);
+
+      // Reload state
+      loadTransactions();
+      window.dispatchEvent(new Event('transactionAdded'));
+    } catch (err: any) {
+      setFormError(err.message || 'An error occurred while adding the transaction.');
+    }
+  };
+
+  const filteredData = data.filter(tx => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      (tx.title || '').toLowerCase().includes(q) ||
+      (tx.category || '').toLowerCase().includes(q) ||
+      (tx.notes || '').toLowerCase().includes(q)
+    );
+  });
+
   const exportCSV = () => {
-    if (!data || data.length === 0) return;
-    const headers = ['Date', 'Title', 'Category', 'Type', 'Amount'];
-    const rows = data.map(tx => [
+    const target = searchQuery ? filteredData : data;
+    if (!target || target.length === 0) return;
+    const headers = ['Date', 'Title', 'Category', 'Type', 'Amount', 'Recurring', 'Frequency', 'Notes'];
+    const rows = target.map(tx => [
       format(new Date(tx.date), 'yyyy-MM-dd'),
-      `"${tx.title}"`,
+      `"${(tx.title || '').replace(/"/g, '""')}"`,
       tx.category,
       tx.type,
-      tx.amount
+      tx.amount,
+      tx.is_recurring ? 'Yes' : 'No',
+      tx.recurring_frequency || '',
+      `"${(tx.notes || '').replace(/"/g, '""')}"`
     ]);
-    const csvContent = "data:text/csv;charset=utf-8," 
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
       + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
       
     const encodedUri = encodeURI(csvContent);
@@ -146,18 +229,155 @@ export default function Transactions() {
           <h2 className="text-3xl font-display font-bold">Ledger</h2>
           <p className="text-muted-foreground">Historical transaction data.</p>
         </div>
-        <Button onClick={exportCSV} className="bg-white/5 border border-white/10 hover:bg-white/10 text-white font-medium" variant="outline">
-          <Download className="w-4 h-4 mr-2" /> Export CSV
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={exportCSV} className="bg-white/5 border border-white/10 hover:bg-white/10 text-white font-medium rounded-xl" variant="outline">
+            <Download className="w-4 h-4 mr-2" /> Export CSV
+          </Button>
+
+          <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+            <DialogTrigger className={cn(buttonVariants({ variant: 'default' }), "bg-[#22d3ee] text-black hover:bg-cyan-400 font-medium rounded-xl cursor-pointer flex items-center px-4 py-2")}>
+              <Plus className="w-4 h-4 mr-2" /> Add Transaction
+            </DialogTrigger>
+            <DialogContent className="glass-card border-white/10 text-white max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-xl font-bold font-display">Add Transaction</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleAddTransaction} className="space-y-4 pt-2">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-white/70">Type</Label>
+                    <select
+                      value={type}
+                      onChange={(e) => setType(e.target.value)}
+                      className="flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-white/10 bg-[#0f172a] px-3 py-2 text-sm text-white"
+                    >
+                      <option value="expense">Expense</option>
+                      <option value="income">Income</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-white/70">Category</Label>
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      className="flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-white/10 bg-[#0f172a] px-3 py-2 text-sm text-white"
+                    >
+                      <option value="Food">Food</option>
+                      <option value="Utilities">Utilities</option>
+                      <option value="Entertainment">Entertainment</option>
+                      <option value="Housing">Housing</option>
+                      <option value="Salary">Salary</option>
+                      <option value="Transport">Transport</option>
+                      <option value="Shopping">Shopping</option>
+                      <option value="Investment">Investment</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-white/70">Title / Vendor</Label>
+                  <Input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="e.g. Acme Supermarket"
+                    className="bg-white/5 border-white/10 text-white rounded-lg"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-white/70">Amount</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      placeholder="0.00"
+                      className="bg-white/5 border-white/10 text-white rounded-lg"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-white/70">Date</Label>
+                    <Input
+                      type="date"
+                      value={date}
+                      onChange={(e) => setDate(e.target.value)}
+                      className="bg-white/5 border-white/10 text-white rounded-lg"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-white/70">Notes</Label>
+                  <Input
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Optional details or note content..."
+                    className="bg-white/5 border-white/10 text-white rounded-lg"
+                  />
+                </div>
+
+                <div className="pt-2 border-t border-white/5 mt-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="recurring-toggle" className="text-white/90 font-medium cursor-pointer">Mark as Recurring</Label>
+                    <input
+                      id="recurring-toggle"
+                      type="checkbox"
+                      checked={isRecurring}
+                      onChange={(e) => setIsRecurring(e.target.checked)}
+                      className="w-4 h-4 rounded text-cyan-500 bg-white/5 border-white/10"
+                    />
+                  </div>
+
+                  {isRecurring && (
+                    <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                      <Label className="text-white/70">Frequency</Label>
+                      <select
+                        value={recurringFrequency}
+                        onChange={(e) => setRecurringFrequency(e.target.value)}
+                        className="flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-white/10 bg-[#0f172a] px-3 py-2 text-sm text-white"
+                      >
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                {formError && (
+                  <p className="text-xs text-red-400 mt-2">{formError}</p>
+                )}
+
+                <Button type="submit" className="w-full bg-[#22d3ee] text-black hover:bg-cyan-400 font-bold rounded-xl mt-4">
+                  Add Transaction
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      {/* Real-Time Filter Search Bar */}
+      <div className="relative">
+        <Search className="absolute left-3 top-3 h-4 w-4 text-white/40" />
+        <Input
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Filter by vendor, category, or note content..."
+          className="pl-10 bg-white/5 border-white/10 text-white placeholder:text-white/40 rounded-xl py-5"
+        />
       </div>
 
       <Card className="glass-card border-none">
         <CardContent className="p-0 sm:p-6">
           <div className="divide-y divide-border/20">
-            {data.length === 0 ? (
-              <div className="p-8 text-center text-muted-foreground">No transactions found.</div>
+            {filteredData.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">No transactions match your criteria.</div>
             ) : (
-              data.map((tx, idx) => (
+              filteredData.map((tx, idx) => (
                 <motion.div 
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -171,11 +391,22 @@ export default function Transactions() {
                     </div>
                     <div>
                       <p className="font-semibold">{tx.title}</p>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                         <span>{format(new Date(tx.date), 'MMM dd, yyyy')}</span>
                         <span>•</span>
                         <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10">{tx.category}</span>
+                        {tx.is_recurring ? (
+                          <>
+                            <span>•</span>
+                            <span className="px-2 py-0.5 rounded-full bg-cyan-400/15 border border-cyan-400/30 text-cyan-400 font-bold uppercase text-[9px] tracking-wider">
+                              🔁 {tx.recurring_frequency}
+                            </span>
+                          </>
+                        ) : null}
                       </div>
+                      {tx.notes && (
+                        <p className="text-xs text-white/40 mt-1 italic">"{tx.notes}"</p>
+                      )}
                     </div>
                   </div>
                   <div className={`font-bold font-mono ${tx.type === 'income' ? 'text-emerald-500' : 'text-foreground'}`}>

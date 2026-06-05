@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, DollarSign, Activity, AlertCircle, Target, Sparkles, X, HeartPulse, Trophy, Star, Medal } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, DollarSign, Activity, AlertCircle, Target, Sparkles, X, HeartPulse, Trophy, Star, Medal, ShieldCheck, Fingerprint } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { useCurrency } from '@/src/context/CurrencyContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 const COLORS = ['#8b5cf6', '#06b6d4', '#f43f5e', '#10b981', '#f59e0b'];
 
@@ -89,6 +90,33 @@ export default function Dashboard() {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
+  const [isBiometricPassed, setIsBiometricPassed] = useState(() => {
+    const isLockEnabled = localStorage.getItem('biometric_auth_enabled') === 'true';
+    const isSessionPassed = sessionStorage.getItem('biometric_authorized_session') === 'true';
+    return !isLockEnabled || isSessionPassed;
+  });
+  const [biometricStatus, setBiometricStatus] = useState<'idle' | 'scanning' | 'success' | 'failed'>('idle');
+  const [biometricError, setBiometricError] = useState('');
+
+  const handleBiometricTrigger = () => {
+    setBiometricStatus('scanning');
+    setBiometricError('');
+    
+    // Simulate real biometric scanning
+    setTimeout(() => {
+      if (Math.random() > 0.05) {
+        setBiometricStatus('success');
+        setTimeout(() => {
+          sessionStorage.setItem('biometric_authorized_session', 'true');
+          setIsBiometricPassed(true);
+        }, 1200);
+      } else {
+        setBiometricStatus('failed');
+        setBiometricError('Biometric authentication failed. Please try again.');
+      }
+    }, 2000);
+  };
+
   const fetchDashboardData = useCallback(() => {
     Promise.all([
       fetch('/api/transactions', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
@@ -154,6 +182,119 @@ export default function Dashboard() {
   const totalExpense = transactions.filter((t: any) => t.type === 'expense').reduce((acc: number, t: any) => acc + t.amount, 0);
   const balance = totalIncome - totalExpense;
   const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) * 100 : 0;
+
+  if (!isBiometricPassed) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-[#020205] flex flex-col items-center justify-center p-6 text-white font-sans overflow-hidden">
+        {/* Futuristic glowing mesh background */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-cyan-500/10 rounded-full blur-[100px] pointer-events-none" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-purple-500/5 rounded-full blur-[80px] pointer-events-none" />
+        
+        <div className="max-w-md w-full text-center space-y-8 relative z-10 animate-in fade-in zoom-in-95 duration-500">
+          <div className="flex flex-col items-center gap-2">
+            <div className="w-10 h-10 rounded-full bg-cyan-400/10 flex items-center justify-center text-cyan-400 border border-cyan-400/20 shadow-[0_0_15px_rgba(34,211,238,0.2)]">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <h2 className="text-2xl font-bold font-display tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70 mt-2">NeuroFin Identity Node</h2>
+            <p className="text-xs text-white/40 uppercase tracking-widest font-mono">Secure Authorization Gateway</p>
+          </div>
+
+          {/* Holographic glowing scanner stage */}
+          <div className="flex flex-col items-center justify-center relative py-6">
+            <div className="w-48 h-48 rounded-full border border-white/5 flex items-center justify-center relative">
+              {/* Outer pulsing ring */}
+              <motion.div 
+                animate={{ scale: [1, 1.05, 1], opacity: [0.1, 0.2, 0.1] }}
+                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                className="absolute inset-0 rounded-full border-2 border-cyan-400/20"
+              />
+              
+              {/* Spinning compass ticks/loader */}
+              {biometricStatus === 'scanning' && (
+                <motion.div 
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                  className="absolute inset-2 rounded-full border border-dashed border-cyan-400/30"
+                />
+              )}
+
+              {/* Scanning visual sweep line */}
+              {biometricStatus === 'scanning' && (
+                <motion.div 
+                  initial={{ translateY: -80 }}
+                  animate={{ translateY: 80 }}
+                  transition={{ duration: 1.5, repeat: Infinity, repeatType: 'reverse', ease: "easeInOut" }}
+                  className="absolute left-[10%] right-[10%] h-[2px] bg-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.8)] z-20"
+                />
+              )}
+
+              {/* Core scanning glyph/icon container */}
+              <div className={`w-32 h-32 rounded-full border flex items-center justify-center transition-all duration-500 relative ${
+                biometricStatus === 'scanning' 
+                  ? 'bg-cyan-400/10 border-cyan-400/40 shadow-[0_0_40px_rgba(34,211,238,0.2)]' 
+                  : biometricStatus === 'success'
+                  ? 'bg-emerald-500/10 border-emerald-400/40 shadow-[0_0_40px_rgba(16,185,129,0.3)]'
+                  : biometricStatus === 'failed'
+                  ? 'bg-red-500/10 border-red-500/40 shadow-[0_0_40px_rgba(239,68,68,0.3)]'
+                  : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20'
+              }`}>
+                {biometricStatus === 'success' ? (
+                  <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1 }} transition={{ type: 'spring' }} className="text-emerald-400">
+                    <ShieldCheck className="w-14 h-14" />
+                  </motion.div>
+                ) : biometricStatus === 'failed' ? (
+                  <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1 }} className="text-red-400">
+                    <X className="w-14 h-14" />
+                  </motion.div>
+                ) : (
+                  <motion.div 
+                    animate={biometricStatus === 'scanning' ? { scale: [1, 1.1, 1] } : {}}
+                    transition={{ duration: 1, repeat: Infinity }}
+                    className={biometricStatus === 'scanning' ? 'text-cyan-400' : 'text-white/60'}
+                  >
+                    <Fingerprint className="w-14 h-14" />
+                  </motion.div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="min-h-[24px]">
+              {biometricStatus === 'scanning' && (
+                <p className="text-sm text-cyan-400 font-mono tracking-wider animate-pulse">VERIFYING BIOMETRICS...</p>
+              )}
+              {biometricStatus === 'success' && (
+                <p className="text-sm text-emerald-400 font-mono tracking-wider font-bold">NODE AUTHORIZED</p>
+              )}
+              {biometricStatus === 'failed' && (
+                <p className="text-sm text-red-400 font-medium">{biometricError}</p>
+              )}
+              {biometricStatus === 'idle' && (
+                <p className="text-sm text-white/50 leading-relaxed max-w-sm mx-auto">This dashboard contains encrypted financial pipelines. Authorize passkey lock entry.</p>
+              )}
+            </div>
+
+            <div className="scale-100 flex flex-col gap-2">
+              <Button 
+                onClick={handleBiometricTrigger} 
+                disabled={biometricStatus === 'scanning' || biometricStatus === 'success'}
+                className={`w-full py-6 rounded-xl font-bold tracking-wide transition-all shadow-lg cursor-pointer flex items-center justify-center ${
+                  biometricStatus === 'scanning'
+                    ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/20'
+                    : biometricStatus === 'success'
+                    ? 'bg-emerald-400 text-black border border-transparent'
+                    : 'bg-[#22d3ee] text-black hover:bg-cyan-300 hover:shadow-[0_0_25px_rgba(34,211,238,0.3)] border border-transparent'
+                }`}
+              >
+                {biometricStatus === 'scanning' ? 'Scanning Touch ID / Face ID...' : biometricStatus === 'success' ? 'Authorized Successfully' : 'Verify Secure Passkey'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) return <SkeletonLoader />;
 

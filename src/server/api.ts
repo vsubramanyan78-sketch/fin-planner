@@ -80,11 +80,22 @@ router.get("/transactions", authMiddleware, (req: any, res) => {
 });
 
 router.post("/transactions", authMiddleware, (req: any, res) => {
-  const { amount, type, category, title, date } = req.body;
+  const { amount, type, category, title, date, is_recurring, recurring_frequency, notes } = req.body;
   const db = getDb();
   const id = uuidv4();
-  const stmt = db.prepare("INSERT INTO transactions (id, user_id, amount, type, category, title, date) VALUES (?, ?, ?, ?, ?, ?, ?)");
-  stmt.run(id, req.userId, amount, type, category, title, date || new Date().toISOString());
+  const stmt = db.prepare("INSERT INTO transactions (id, user_id, amount, type, category, title, date, is_recurring, recurring_frequency, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  stmt.run(
+    id,
+    req.userId,
+    amount,
+    type,
+    category,
+    title,
+    date || new Date().toISOString(),
+    is_recurring ? 1 : 0,
+    recurring_frequency || null,
+    notes || null
+  );
   res.json({ id });
 });
 

@@ -2,13 +2,15 @@ import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CalendarHeatmap } from '@/src/components/CalendarHeatmap';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { motion } from 'motion/react';
 import { Sparkles, TrendingUp, TrendingDown, Target, Download, Loader2 } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { useCurrency } from '@/src/context/CurrencyContext';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+
+const PIE_COLORS = ['#22d3ee', '#a855f7', '#ec4899', '#f43f5e', '#10b981', '#f59e0b', '#3b82f6', '#14b8a6'];
 
 const SkeletonLoader = () => (
   <div className="space-y-6">
@@ -131,6 +133,20 @@ export default function Analytics() {
     categoryData.push({ name: 'None', count: 0 });
   }
 
+  const spendingCategoryMap: Record<string, number> = {};
+  transactions.forEach((t: any) => {
+    if (t.type !== 'expense') return;
+    spendingCategoryMap[t.category] = (spendingCategoryMap[t.category] || 0) + t.amount;
+  });
+
+  const spendingCategoryData = Object.entries(spendingCategoryMap)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+
+  if (spendingCategoryData.length === 0) {
+    spendingCategoryData.push({ name: 'None', value: 0 });
+  }
+
   const defaultBudgets: Record<string, { limit: number; color: string }> = {
     'Housing': { limit: 1800, color: 'bg-cyan-400' },
     'Food': { limit: 800, color: 'bg-red-400' },
@@ -245,6 +261,53 @@ export default function Analytics() {
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
+        <Card className="glass-card border-none h-full">
+          <CardHeader>
+            <CardTitle className="text-white/80">Spending Distribution</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col sm:flex-row items-center justify-center gap-6 h-[300px]">
+            <div className="h-[200px] w-[200px] shrink-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={spendingCategoryData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={75}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {spendingCategoryData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} stroke="rgba(0,0,0,0.5)" strokeWidth={1} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<CustomTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex flex-col gap-2 overflow-y-auto max-h-[260px] w-full pr-1">
+              {spendingCategoryData.map((entry, index) => {
+                const total = spendingCategoryData.reduce((acc, curr) => acc + curr.value, 0);
+                const pct = total > 0 ? ((entry.value / total) * 100).toFixed(1) : '0';
+                return (
+                  <div key={entry.name} className="flex items-center justify-between text-xs font-mono border-b border-white/5 pb-1 mt-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} />
+                      <span className="text-white/70 truncate max-w-[80px]">{entry.name}</span>
+                    </div>
+                    <span className="text-white text-right">
+                      {formatAmount(entry.value)} <span className="text-white/30 text-[9px] ml-1">({pct}%)</span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} className="lg:col-span-2">
         <Card className="glass-card border-none h-full">
           <CardHeader>
             <CardTitle className="text-white/80">Transaction Density</CardTitle>
