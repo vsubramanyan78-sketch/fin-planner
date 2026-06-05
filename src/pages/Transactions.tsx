@@ -19,6 +19,8 @@ export default function Transactions() {
   
   // Real-time search query
   const [searchQuery, setSearchQuery] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   // Add Transaction Form state
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -38,6 +40,76 @@ export default function Transactions() {
   const [voiceError, setVoiceError] = useState('');
   const [voiceSuccess, setVoiceSuccess] = useState(false);
   const recognitionRef = useRef<any>(null);
+  const transcriptRef = useRef('');
+
+  // Intelligent parser for Web Speech commands
+  const parseVoiceCommand = (sentence: string) => {
+    const text = sentence.toLowerCase().trim();
+    
+    // 1. Determine type (default: expense)
+    let finalType = 'expense';
+    if (text.includes('earned') || text.includes('received') || text.includes('salary') || text.includes('income') || text.includes('deposit')) {
+      finalType = 'income';
+    }
+
+    // 2. Determine category
+    let finalCategory = 'Other';
+    const catKeywords: Record<string, string[]> = {
+      'Food': ['groceries', 'food', 'dinner', 'lunch', 'coffee', 'restaurant', 'eat', 'starbucks', 'breakfast', 'subway', 'mcdonalds'],
+      'Utilities': ['bill', 'power', 'utility', 'water', 'electricity', 'gas bill', 'internet', 'wifi', 'phone', 'comcast'],
+      'Entertainment': ['movie', 'netflix', 'game', 'concert', 'spotify', 'disney', 'play', 'subscription', 'fun'],
+      'Housing': ['rent', 'mortgage', 'housing', 'apartment', 'home'],
+      'Salary': ['salary', 'paycheck', 'dividend', 'stripe payout'],
+      'Transport': ['bus', 'train', 'uber', 'lyft', 'taxi', 'gas', 'subway', 'transportation', 'toll'],
+      'Shopping': ['clothes', 'shoes', 'amazon', 'mall', 'shopping', 'store', 'target', 'walmart'],
+      'Investment': ['stock', 'crypto', 'investment', 'savings', 'deposit']
+    };
+
+    for (const [catName, words] of Object.entries(catKeywords)) {
+      if (words.some(word => text.includes(word))) {
+        finalCategory = catName;
+        break;
+      }
+    }
+
+    // 3. Extract Amount
+    let finalAmount = 15.0; // Fallback
+    const digitsMatch = text.match(/\d+(\.\d+)?/);
+    if (digitsMatch) {
+      finalAmount = parseFloat(digitsMatch[0]);
+    } else {
+      const wordToNum: Record<string, number> = {
+        'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+        'eleven': 11, 'twelve': 12, 'fifteen': 15, 'twenty': 20, 'fifty': 50, 'hundred': 100
+      };
+      for (const [w, n] of Object.entries(wordToNum)) {
+        if (text.includes(w)) {
+          finalAmount = n;
+          break;
+        }
+      }
+    }
+
+    // 4. Extract Title (filter numbers and common stop words)
+    const stopWords = [
+      'spent', 'bought', 'paid', 'received', 'earned', 'on', 'at', 'for', 'a', 'an', 'the', 'dollar', 'dollars', 'cents', 'payout', 
+      'monthly', 'weekly', 'and', 'to', 'some', 'from'
+    ];
+    const merchantClean = sentence.replace(/\$?\d+(\.\d+)?/g, '');
+    const words = merchantClean.split(/\s+/).filter(w => {
+      const lower = w.toLowerCase().trim();
+      return lower && !stopWords.includes(lower) && isNaN(Number(lower));
+    });
+
+    const finalTitle = words.slice(0, 3).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || 'Voice Ledger Node';
+
+    return {
+      title: finalTitle,
+      amount: finalAmount,
+      type: finalType,
+      category: finalCategory
+    };
+  };
 
   const loadTransactions = useCallback(() => {
     fetch('/api/transactions', {
@@ -65,6 +137,7 @@ export default function Transactions() {
           const current = event.resultIndex;
           const transcriptText = event.results[current][0].transcript;
           setTranscript(transcriptText);
+          transcriptRef.current = transcriptText;
         };
         
         recognitionRef.current.onerror = (event: any) => {
@@ -74,13 +147,12 @@ export default function Transactions() {
         
         recognitionRef.current.onend = () => {
           setIsListening(false);
-          // If we have a transcript, parse it and try to save
-          if (transcript.length > 0) {
+          const rawText = transcriptRef.current;
+          if (rawText.trim().length > 0) {
              setVoiceSuccess(true);
              
-             // Extract amount via rough parsing for demo
-             const amtMatch = transcript.match(/\d+(\.\d+)?/);
-             const amt = amtMatch ? parseFloat(amtMatch[0]) : 15.0; // fallback amount
+             // Run voice-command logic optimizer
+             const payload = parseVoiceCommand(rawText);
              
              fetch('/api/transactions', {
                 method: 'POST',
@@ -89,21 +161,22 @@ export default function Transactions() {
                   'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                  amount: amt,
-                  type: 'expense',
-                  title: 'Voice Entry',
-                  category: 'General',
+                  amount: payload.amount,
+                  type: payload.type,
+                  title: payload.title,
+                  category: payload.category,
                   date: new Date().toISOString()
                 })
              }).then(() => {
                   window.dispatchEvent(new Event('transactionAdded'));
              }).catch(console.error);
- 
+  
              setTimeout(() => {
                setVoiceSuccess(false);
                setTranscript('');
+               transcriptRef.current = '';
                loadTransactions();
-             }, 3000);
+             }, 3500);
           }
         };
       }
@@ -114,7 +187,7 @@ export default function Transactions() {
          recognitionRef.current.abort();
       }
     };
-  }, [token, transcript, loadTransactions]);
+  }, [token, loadTransactions]);
 
   const toggleListening = () => {
     setVoiceError('');
@@ -185,13 +258,31 @@ export default function Transactions() {
   };
 
   const filteredData = data.filter(tx => {
+    // 1. Merchant name, category, or notes search
     const q = searchQuery.toLowerCase().trim();
-    if (!q) return true;
-    return (
+    const matchesSearch = !q ? true : (
       (tx.title || '').toLowerCase().includes(q) ||
       (tx.category || '').toLowerCase().includes(q) ||
       (tx.notes || '').toLowerCase().includes(q)
     );
+
+    // 2. Date range envelope
+    let matchesDate = true;
+    if (tx.date) {
+      try {
+        const txDateStr = format(new Date(tx.date), 'yyyy-MM-dd');
+        if (startDate) {
+          matchesDate = matchesDate && (txDateStr >= startDate);
+        }
+        if (endDate) {
+          matchesDate = matchesDate && (txDateStr <= endDate);
+        }
+      } catch (err) {
+        console.error("Date format error:", err);
+      }
+    }
+
+    return matchesSearch && matchesDate;
   });
 
   const exportCSV = () => {
@@ -360,15 +451,51 @@ export default function Transactions() {
         </div>
       </div>
 
-      {/* Real-Time Filter Search Bar */}
-      <div className="relative">
-        <Search className="absolute left-3 top-3 h-4 w-4 text-white/40" />
-        <Input
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Filter by vendor, category, or note content..."
-          className="pl-10 bg-white/5 border-white/10 text-white placeholder:text-white/40 rounded-xl py-5"
-        />
+      {/* Real-Time Filter Search Bar & Date Range Pickers */}
+      <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center">
+        <div className="relative flex-1">
+          <Search className="absolute left-3.5 top-3.5 h-4 w-4 text-white/40" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by vendor/merchant name, category or details..."
+            className="pl-10 bg-white/5 border-white/10 text-white placeholder:text-white/40 rounded-xl py-5"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-3 bg-white/5 border border-white/10 p-2.5 rounded-xl">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-white/40">From</span>
+            <input 
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="bg-[#0f172a] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400"
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-white/40">To</span>
+            <input 
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="bg-[#0f172a] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400"
+            />
+          </div>
+          {(startDate || endDate || searchQuery) && (
+            <Button 
+              onClick={() => {
+                setStartDate('');
+                setEndDate('');
+                setSearchQuery('');
+              }}
+              size="sm"
+              variant="ghost" 
+              className="text-xs text-red-400 hover:text-red-300 hover:bg-white/5 px-2.5 h-8 rounded-lg cursor-pointer"
+            >
+              Clear
+            </Button>
+          )}
+        </div>
       </div>
 
       <Card className="glass-card border-none">

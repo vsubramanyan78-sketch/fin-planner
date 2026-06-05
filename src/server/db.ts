@@ -54,6 +54,7 @@ export default function initDb() {
       amount REAL,
       billing_cycle TEXT, -- 'monthly', 'yearly'
       next_billing_date TEXT,
+      is_active INTEGER DEFAULT 1,
       FOREIGN KEY(user_id) REFERENCES users(id)
     );
   `);
@@ -67,5 +68,8 @@ export default function initDb() {
   } catch (e) {}
   try {
     db.exec("ALTER TABLE transactions ADD COLUMN notes TEXT;");
+  } catch (e) {}
+  try {
+    db.exec("ALTER TABLE subscriptions ADD COLUMN is_active INTEGER DEFAULT 1;");
   } catch (e) {}
 }

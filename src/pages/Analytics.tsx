@@ -51,7 +51,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function Analytics() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { formatAmount } = useCurrency();
   const [loading, setLoading] = useState(true);
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -81,20 +81,190 @@ export default function Analytics() {
     return () => window.removeEventListener('transactionAdded', fetchAnalyticsData);
   }, [fetchAnalyticsData]);
 
-  const downloadPDF = async () => {
+  const downloadPDF = () => {
     setDownloading(true);
     try {
-      const element = document.getElementById('analytics-report');
-      if (!element) return;
-      
-      const canvas = await html2canvas(element, { scale: 2, backgroundColor: null, useCORS: true });
-      const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, Math.min(pdfHeight, pdf.internal.pageSize.getHeight()));
-      pdf.save('financial-analytics.pdf');
+      // Document metadata
+      const todayStr = new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+      const userName = user?.name || 'Active Client Node';
+      const userEmail = user?.email || 'authenticated@neurofin.io';
+      
+      // Page 1 Setup (Slate header box)
+      pdf.setFillColor(15, 23, 42); // slate 900
+      pdf.rect(0, 0, 210, 40, 'F');
+      
+      // Header branding
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(22);
+      pdf.text('NEUROFIN INTELLECTUAL LEDGER', 15, 20);
+      
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      pdf.setTextColor(148, 163, 184); // slate 400
+      pdf.text('Statement Cycle: Current Month Rolling Summary', 15, 28);
+      pdf.text(`Printed: ${todayStr}`, 150, 28);
+      
+      // Executive Account Info Section
+      let y = 55;
+      pdf.setFillColor(15, 23, 42);
+      pdf.setTextColor(15, 23, 42);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(12);
+      pdf.text('ACCOUNT SUMMARY NODE', 15, y);
+      
+      pdf.setDrawColor(226, 232, 240); // slate 200
+      pdf.setLineWidth(0.4);
+      pdf.line(15, y + 2, 195, y + 2);
+      
+      y += 10;
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      pdf.setTextColor(100, 116, 139); // slate 505
+      pdf.text(`Client Owner:`, 15, y);
+      pdf.setTextColor(15, 23, 42);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(`${userName}`, 42, y);
+      
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(100, 116, 139);
+      pdf.text(`Client Node Email:`, 110, y);
+      pdf.setTextColor(15, 23, 42);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(`${userEmail}`, 145, y);
+      
+      // Ledger Performance Metrics
+      y += 15;
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(12);
+      pdf.setTextColor(15, 23, 42);
+      pdf.text('FINANCIAL VELOCITY METRICS', 15, y);
+      pdf.line(15, y + 2, 195, y + 2);
+      
+      y += 12;
+      const totalInflows = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
+      const totalOutflows = transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
+      const activeSavings = totalInflows - totalOutflows;
+      const savingsPercentage = totalInflows > 0 ? `${((activeSavings / totalInflows) * 100).toFixed(1)}%` : '0.0%';
+      
+      // Render clean metric cards
+      pdf.setFillColor(248, 250, 252); // slate 50
+      pdf.rect(15, y, 55, 22, 'F');
+      pdf.rect(75, y, 55, 22, 'F');
+      pdf.rect(135, y, 60, 22, 'F');
+      
+      pdf.setFontSize(8);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(100, 116, 139);
+      pdf.text('TOTAL INFLOWS', 20, y + 6);
+      pdf.text('TOTAL OUTFLOWS', 80, y + 6);
+      pdf.text('LEDGER NET SAVINGS', 140, y + 6);
+      
+      pdf.setFontSize(11);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(16, 185, 129); // green 500
+      pdf.text(formatAmount(totalInflows), 20, y + 15);
+      pdf.setTextColor(239, 68, 68); // red 500
+      pdf.text(formatAmount(totalOutflows), 80, y + 15);
+      pdf.setTextColor(15, 23, 42);
+      pdf.text(`${formatAmount(activeSavings)} (${savingsPercentage})`, 140, y + 15);
+      
+      // Budget threshold status table
+      y += 35;
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(12);
+      pdf.setTextColor(15, 23, 42);
+      pdf.text('BUDGET UTILIZATION TRACKING', 15, y);
+      pdf.line(15, y + 2, 195, y + 2);
+      
+      y += 10;
+      pdf.setFillColor(226, 232, 240); // header row background slate 200
+      pdf.rect(15, y, 180, 7, 'F');
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(15, 23, 42);
+      pdf.text('CATEGORY', 18, y + 5);
+      pdf.text('ACTUAL SPENT', 75, y + 5);
+      pdf.text('BUDGET LIMIT', 125, y + 5);
+      pdf.text('UTILIZATION STATUS', 165, y + 5);
+      
+      pdf.setFont('helvetica', 'normal');
+      budgetCategories.forEach((cat, idx) => {
+        y += 8;
+        // background zebra stripes
+        if (idx % 2 === 1) {
+          pdf.setFillColor(248, 250, 252);
+          pdf.rect(15, y, 180, 7, 'F');
+        }
+        pdf.setTextColor(15, 23, 42);
+        pdf.text(cat.name.toUpperCase(), 18, y + 5);
+        pdf.text(formatAmount(cat.spent), 75, y + 5);
+        pdf.text(formatAmount(cat.limit), 125, y + 5);
+        
+        const ratio = cat.limit > 0 ? (cat.spent / cat.limit) * 100 : 0;
+        if (ratio > 100) {
+          pdf.setTextColor(239, 68, 68);
+          pdf.text(`${ratio.toFixed(0)}% OVER`, 165, y + 5);
+        } else if (ratio >= 80) {
+          pdf.setTextColor(245, 158, 11);
+          pdf.text(`${ratio.toFixed(0)}% APPR`, 165, y + 5);
+        } else {
+          pdf.setTextColor(16, 185, 129);
+          pdf.text(`${ratio.toFixed(0)}% OK`, 165, y + 5);
+        }
+      });
+      
+      // Transaction ledger breakdown
+      y += 20;
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(12);
+      pdf.setTextColor(15, 23, 42);
+      pdf.text('RECENT ACTIVITY LEDGER NODES', 15, y);
+      pdf.line(15, y + 2, 195, y + 2);
+      
+      y += 10;
+      pdf.setFillColor(226, 232, 240);
+      pdf.rect(15, y, 180, 7, 'F');
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(15, 23, 42);
+      pdf.text('DATE', 18, y + 5);
+      pdf.text('MERCHANT / TITLE', 55, y + 5);
+      pdf.text('CATEGORY', 115, y + 5);
+      pdf.text('AMOUNT', 165, y + 5);
+      
+      pdf.setFont('helvetica', 'normal');
+      transactions.slice(0, 8).forEach((tx, idx) => {
+        y += 8;
+        const txDate = tx.date ? new Date(tx.date).toLocaleDateString() : 'N/A';
+        pdf.setTextColor(100, 116, 139);
+        pdf.text(txDate, 18, y + 5);
+        pdf.setTextColor(15, 23, 42);
+        pdf.text(tx.title || 'N/A', 55, y + 5);
+        pdf.text(tx.category || 'Other', 115, y + 5);
+        
+        if (tx.type === 'income') {
+          pdf.setTextColor(16, 185, 129);
+          pdf.text(`+${formatAmount(tx.amount)}`, 165, y + 5);
+        } else {
+          pdf.setTextColor(15, 23, 42);
+          pdf.text(`-${formatAmount(tx.amount)}`, 165, y + 5);
+        }
+      });
+      
+      // Footing note
+      y += 14;
+      pdf.setFontSize(7);
+      pdf.setTextColor(148, 163, 184);
+      pdf.text('NeuroFin Analytical Engine - Secure Ledger Cryptography Protocol Summary. Confidential document for personal account storage.', 16, y);
+      
+      pdf.save(`neurofin_ledger_statement_${new Date().getFullYear()}_${new Date().getMonth() + 1}.pdf`);
     } catch (e) {
       console.error(e);
     } finally {
@@ -145,6 +315,47 @@ export default function Analytics() {
 
   if (spendingCategoryData.length === 0) {
     spendingCategoryData.push({ name: 'None', value: 0 });
+  }
+
+  // Historical category spending over time (multi-line graph)
+  const categoryTrendMap: Record<string, Record<string, number>> = {};
+  transactions.forEach((t: any) => {
+    if (t.type !== 'expense' || !t.date) return;
+    const m = formatMonth(t.date);
+    if (!categoryTrendMap[m]) {
+      categoryTrendMap[m] = {
+        'Food': 0,
+        'Utilities': 0,
+        'Entertainment': 0,
+        'Housing': 0,
+        'Transport': 0,
+        'Other': 0
+      };
+    }
+    const cat = t.category || 'Other';
+    const knownKeys = ['Food', 'Utilities', 'Entertainment', 'Housing', 'Transport', 'Other'];
+    const matched = knownKeys.find(k => k.toLowerCase() === cat.toLowerCase()) || 'Other';
+    categoryTrendMap[m][matched] += t.amount;
+  });
+
+  const categoryTrendData: { name: string; [key: string]: any }[] = Object.entries(categoryTrendMap)
+    .sort((a, b) => monthOrder.indexOf(a[0]) - monthOrder.indexOf(b[0]))
+    .map(([month, cats]) => ({
+      name: month,
+      ...cats
+    }));
+
+  if (categoryTrendData.length === 0) {
+    const currM = formatMonth(new Date().toISOString());
+    categoryTrendData.push({
+      name: currM,
+      'Food': 0,
+      'Utilities': 0,
+      'Entertainment': 0,
+      'Housing': 0,
+      'Transport': 0,
+      'Other': 0
+    });
   }
 
   const defaultBudgets: Record<string, { limit: number; color: string }> = {
@@ -321,6 +532,45 @@ export default function Analytics() {
                   <YAxis stroke="rgba(255,255,255,0.3)" fontSize={11} tickLine={false} axisLine={false} />
                   <Tooltip content={<CustomTooltip />} />
                   <Line type="monotone" dataKey="count" stroke="#a855f7" strokeWidth={3} dot={{ fill: '#a855f7', r: 4, strokeWidth: 0 }} activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2 }} isAnimationActive={true} animationDuration={1500} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.65 }} className="lg:col-span-2">
+        <Card className="glass-card border-none h-full">
+          <CardHeader>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-white/80">Category Spending Comparison Over Time</CardTitle>
+                <p className="text-xs text-white/40 mt-1">Timeline comparisons across core expenditure categories.</p>
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 bg-white/5 border border-white/10 px-3.5 py-1.5 rounded-xl font-mono text-[10px] text-white">
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#ec4899]" /> Food</div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#f59e0b]" /> Utilities</div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#a855f7]" /> Entertainment</div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#22d3ee]" /> Housing</div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#10b981]" /> Transport</div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#64748b]" /> Other</div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[320px] w-full mt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={categoryTrendData} margin={{ top: 15, right: 15, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                  <XAxis dataKey="name" stroke="rgba(255,255,255,0.3)" fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis stroke="rgba(255,255,255,0.3)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => formatAmount(v)} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Line type="monotone" dataKey="Food" stroke="#ec4899" strokeWidth={2.5} dot={{ fill: '#ec4899', r: 3 }} activeDot={{ r: 5 }} isAnimationActive={true} animationDuration={1500} />
+                  <Line type="monotone" dataKey="Utilities" stroke="#f59e0b" strokeWidth={2.5} dot={{ fill: '#f59e0b', r: 3 }} activeDot={{ r: 5 }} isAnimationActive={true} animationDuration={1500} />
+                  <Line type="monotone" dataKey="Entertainment" stroke="#a855f7" strokeWidth={2.5} dot={{ fill: '#a855f7', r: 3 }} activeDot={{ r: 5 }} isAnimationActive={true} animationDuration={1500} />
+                  <Line type="monotone" dataKey="Housing" stroke="#22d3ee" strokeWidth={2.5} dot={{ fill: '#22d3ee', r: 3 }} activeDot={{ r: 5 }} isAnimationActive={true} animationDuration={1500} />
+                  <Line type="monotone" dataKey="Transport" stroke="#10b981" strokeWidth={2.5} dot={{ fill: '#10b981', r: 3 }} activeDot={{ r: 5 }} isAnimationActive={true} animationDuration={1500} />
+                  <Line type="monotone" dataKey="Other" stroke="#64748b" strokeWidth={2.5} dot={{ fill: '#64748b', r: 3 }} activeDot={{ r: 5 }} isAnimationActive={true} animationDuration={1500} />
                 </LineChart>
               </ResponsiveContainer>
             </div>

@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard';
 import ScanReceipt from './pages/ScanReceipt';
 import Transactions from './pages/Transactions';
 import Analytics from './pages/Analytics';
+import Subscriptions from './pages/Subscriptions';
 import Settings from './pages/Settings';
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
@@ -40,6 +41,7 @@ function AppRoutes() {
         <Route path="scan" element={<ScanReceipt />} />
         <Route path="transactions" element={<Transactions />} />
         <Route path="analytics" element={<Analytics />} />
+        <Route path="subscriptions" element={<Subscriptions />} />
         <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>

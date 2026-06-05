@@ -78,7 +78,7 @@ export default function Settings() {
 
   const totalMonthly = subscriptions.filter(s => s.billing_cycle === 'monthly').reduce((acc, curr) => acc + curr.amount, 0) + (subscriptions.filter(s => s.billing_cycle === 'yearly').reduce((acc, curr) => acc + curr.amount, 0) / 12);
 
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, syncWithSystem, setSyncWithSystem } = useTheme();
 
   return (
     <div className="space-y-6 max-w-4xl relative pb-20">
@@ -144,6 +144,32 @@ export default function Settings() {
                   </div>
                 </div>
                 <Button className="bg-gradient-to-tr from-cyan-400 to-purple-500 text-white font-bold tracking-wide border border-transparent shadow-[0_0_20px_rgba(34,211,238,0.2)]">Save Changes</Button>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card border-none">
+              <CardHeader className="flex flex-row items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-cyan-400/20 flex flex-col items-center justify-center text-cyan-400 border border-cyan-400/30">
+                  <Sun className="w-6 h-6" />
+                </div>
+                <div>
+                  <CardTitle className="text-white/90">Theme & Aesthetics</CardTitle>
+                  <CardDescription className="text-white/50">Configure visual themes and user-interface preferences.</CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/10">
+                  <div>
+                    <h4 className="font-medium text-white/90">Automated OS Theme Sync</h4>
+                    <p className="text-xs sm:text-sm text-white/50 pr-4">Automatically synchronize interface with your operating system light and dark color schemes.</p>
+                  </div>
+                  <button 
+                    onClick={() => setSyncWithSystem(!syncWithSystem)}
+                    className={`w-10 h-6 rounded-full relative transition-all duration-300 shrink-0 cursor-pointer ${syncWithSystem ? 'bg-[#22d3ee] shadow-[0_0_12px_rgba(34,211,238,0.4)]' : 'bg-white/10'}`}
+                  >
+                    <div className={`w-5 h-5 bg-black rounded-full absolute duration-300 top-0.5 shadow-sm ${syncWithSystem ? 'right-0.5' : 'left-0.5'}`} />
+                  </button>
+                </div>
               </CardContent>
             </Card>
 

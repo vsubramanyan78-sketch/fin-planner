@@ -96,6 +96,17 @@ export default function Dashboard() {
   const [spendingInsight, setSpendingInsight] = useState<string>('');
   const [insightLoading, setInsightLoading] = useState(true);
 
+  // Milestone Savings Goal state with local storage persistence
+  const [goalName, setGoalName] = useState(() => localStorage.getItem('savings_goal_name') || 'Financial Freedom Node');
+  const [goalTarget, setGoalTarget] = useState(() => Number(localStorage.getItem('savings_goal_target') || '5000'));
+  const [goalDate, setGoalDate] = useState(() => localStorage.getItem('savings_goal_date') || '2026-12-31');
+  const [customDeposits, setCustomDeposits] = useState(() => Number(localStorage.getItem('savings_custom_deposits') || '0'));
+  const [isEditingGoal, setIsEditingGoal] = useState(false);
+  const [tempGoalName, setTempGoalName] = useState(goalName);
+  const [tempGoalTarget, setTempGoalTarget] = useState(String(goalTarget));
+  const [tempGoalDate, setTempGoalDate] = useState(goalDate);
+  const [depositAmount, setDepositAmount] = useState('');
+
   const [isBiometricPassed, setIsBiometricPassed] = useState(() => {
     const isLockEnabled = localStorage.getItem('biometric_auth_enabled') === 'true';
     const isSessionPassed = sessionStorage.getItem('biometric_authorized_session') === 'true';
@@ -216,6 +227,15 @@ export default function Dashboard() {
 
   const totalIncome = transactions.filter((t: any) => t.type === 'income').reduce((acc: number, t: any) => acc + t.amount, 0);
   const totalExpense = transactions.filter((t: any) => t.type === 'expense').reduce((acc: number, t: any) => acc + t.amount, 0);
+  const netLedgerSavings = Math.max(0, totalIncome - totalExpense);
+  const netSavedTotal = netLedgerSavings + customDeposits;
+  const progressPercent = Math.min(100, Math.round(goalTarget > 0 ? (netSavedTotal / goalTarget) * 100 : 0));
+
+  const daysRemaining = Math.max(1, Math.ceil((new Date(goalDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
+  const weeksRemaining = Math.max(1, Math.ceil(daysRemaining / 7));
+  const remainingGoal = Math.max(0, goalTarget - netSavedTotal);
+  const suggestedDaily = remainingGoal / daysRemaining;
+  const suggestedWeekly = remainingGoal / weeksRemaining;
   const balance = totalIncome - totalExpense;
   const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) * 100 : 0;
 
@@ -621,6 +641,229 @@ export default function Dashboard() {
                         </div>
                       );
                     })}
+                  </div>
+                </div>
+
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Interactive Savings Goal Accelerator & Micro-Savings Planner */}
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }} 
+        animate={{ opacity: 1, y: 0 }} 
+        transition={{ delay: 0.38 }}
+      >
+        <Card className="glass-card border-none overflow-hidden relative">
+          <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none">
+            <Trophy className="w-32 h-32 text-purple-400 animate-pulse" />
+          </div>
+          
+          <CardHeader className="pb-3 border-b border-white/5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+                <Target className="w-5 h-5" />
+              </div>
+              <div>
+                <CardTitle className="text-lg font-bold text-white font-display">
+                  Active Milestone Accelerator
+                </CardTitle>
+                <p className="text-xs text-white/50 mt-1">
+                  Track targets and leverage neural micro-saving cycles to fast-track your reserves.
+                </p>
+              </div>
+            </div>
+            
+            <Button 
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                if (isEditingGoal) {
+                  const parsedTarget = Math.max(1, Number(tempGoalTarget) || 5000);
+                  setGoalName(tempGoalName);
+                  setGoalTarget(parsedTarget);
+                  setGoalDate(tempGoalDate);
+                  
+                  localStorage.setItem('savings_goal_name', tempGoalName);
+                  localStorage.setItem('savings_goal_target', String(parsedTarget));
+                  localStorage.setItem('savings_goal_date', tempGoalDate);
+                } else {
+                  setTempGoalName(goalName);
+                  setTempGoalTarget(String(goalTarget));
+                  setTempGoalDate(goalDate);
+                }
+                setIsEditingGoal(!isEditingGoal);
+              }}
+              className="text-xs bg-white/5 border-white/10 hover:bg-white/10 text-white cursor-pointer self-start sm:self-auto"
+            >
+              {isEditingGoal ? "Save Milestone" : "Edit Milestone"}
+            </Button>
+          </CardHeader>
+
+          <CardContent className="pt-6">
+            {isEditingGoal ? (
+              <div className="space-y-4 max-w-xl">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono uppercase tracking-wider text-white/40">Milestone Name</label>
+                    <input 
+                      type="text"
+                      value={tempGoalName}
+                      onChange={(e) => setTempGoalName(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono uppercase tracking-wider text-white/40">Target Reserve ({formatAmount(1).substring(0,1)})</label>
+                    <input 
+                      type="number"
+                      value={tempGoalTarget}
+                      onChange={(e) => setTempGoalTarget(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono uppercase tracking-wider text-white/40">Target Horizon Date</label>
+                    <input 
+                      type="date"
+                      value={tempGoalDate}
+                      onChange={(e) => setTempGoalDate(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                {/* Visual reserve track ring */}
+                <div className="lg:col-span-4 flex flex-col justify-between p-5 bg-white/5 rounded-2xl border border-white/10">
+                  <div>
+                    <span className="text-[10px] font-mono text-emerald-400 uppercase tracking-wider">Milestone Objective</span>
+                    <h3 className="text-xl font-bold font-display text-white mt-1 ">{goalName}</h3>
+                    <p className="text-xs text-white/40 font-mono mt-1">Horizon Date: {new Date(goalDate).toLocaleDateString()}</p>
+                  </div>
+                  
+                  <div className="mt-6 space-y-2">
+                    <div className="flex items-end justify-between">
+                      <div className="space-y-0.5">
+                        <span className="text-xs text-white/40">Aggregated Reserves</span>
+                        <div className="text-2xl font-black font-mono text-white">
+                          {formatAmount(netSavedTotal)}
+                          <span className="text-xs text-white/40 font-normal"> / {formatAmount(goalTarget)}</span>
+                        </div>
+                      </div>
+                      <span className="text-lg font-black font-mono text-emerald-400">{progressPercent}%</span>
+                    </div>
+                    
+                    {/* Progress tracking line bar */}
+                    <div className="w-full bg-white/5 rounded-full h-2.5 overflow-hidden border border-white/5">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${progressPercent}%` }}
+                        transition={{ duration: 0.8, ease: 'easeOut' }}
+                        className="h-full bg-gradient-to-r from-emerald-400 to-cyan-400 shadow-[0_0_12px_rgba(52,211,153,0.4)]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Manual Log Contributions Deposit Input */}
+                  <div className="mt-6 pt-5 border-t border-white/5 flex gap-2 items-center">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-2.5 text-xs text-white/40 font-mono select-none">Log</span>
+                      <input 
+                        type="number"
+                        placeholder="Add virtual deposit..."
+                        value={depositAmount}
+                        onChange={(e) => setDepositAmount(e.target.value)}
+                        className="w-full pl-11 pr-3 py-2 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-emerald-400"
+                      />
+                    </div>
+                    <Button 
+                      onClick={() => {
+                        const amt = Number(depositAmount);
+                        if (!isNaN(amt) && amt > 0) {
+                          const nextVal = customDeposits + amt;
+                          setCustomDeposits(nextVal);
+                          localStorage.setItem('savings_custom_deposits', String(nextVal));
+                          setDepositAmount('');
+                          setToastMessage(`Milestone reserve augmented by ${formatAmount(amt)}!`);
+                          setShowToast(true);
+                          setTimeout(() => setShowToast(false), 3000);
+                        }
+                      }}
+                      size="sm"
+                      className="bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs px-3.5 h-9 rounded-xl cursor-pointer"
+                    >
+                      Deposit
+                    </Button>
+                  </div>
+                </div>
+
+                {/* suggested micro savings cards / daily weekly suggestions */}
+                <div className="lg:col-span-4 flex flex-col justify-between p-5 bg-white/5 rounded-2xl border border-white/10">
+                  <div>
+                    <span className="text-[10px] font-mono text-cyan-400 uppercase tracking-wider">Algorithmic Recommendations</span>
+                    <h4 className="text-sm font-bold text-white mt-1">Suggested Micro-Savings Cycles</h4>
+                    <p className="text-xs text-white/50 mt-1">Daily and weekly micro contributions needed to hit horizon date.</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mt-4">
+                    <div className="p-4 bg-black/20 rounded-xl border border-white/5 space-y-1">
+                      <span className="text-[9px] font-mono text-white/40 uppercase tracking-widest">DAILY CYCLE</span>
+                      <div className="text-base font-bold font-mono text-cyan-400">{formatAmount(suggestedDaily)}</div>
+                      <p className="text-[9px] text-white/40 font-mono">For {daysRemaining} days</p>
+                    </div>
+
+                    <div className="p-4 bg-black/20 rounded-xl border border-white/5 space-y-1">
+                      <span className="text-[9px] font-mono text-white/40 uppercase tracking-widest">WEEKLY CYCLE</span>
+                      <div className="text-base font-bold font-mono text-purple-400">{formatAmount(suggestedWeekly)}</div>
+                      <p className="text-[9px] text-white/40 font-mono">For {weeksRemaining} weeks</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-cyan-500/5 border border-cyan-500/10 rounded-xl p-3 mt-4">
+                    <p className="text-[11px] text-cyan-400/90 leading-relaxed font-mono flex items-start gap-1.5">
+                      <Sparkles className="w-4 h-4 shrink-0 text-cyan-400 mt-0.5" />
+                      <span>Ledger saved <strong className="text-white font-mono">{formatAmount(netLedgerSavings)}</strong> in primary cash-flow this cycle!</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Neural habit recommendations column based on real categories */}
+                <div className="lg:col-span-4 flex flex-col justify-between p-5 bg-white/5 rounded-2xl border border-white/10">
+                  <div>
+                    <span className="text-[10px] font-mono text-purple-400 uppercase tracking-wider">Intelligence Suggestions</span>
+                    <h4 className="text-sm font-bold text-white mt-1">Micro-Habit Nuances</h4>
+                    <p className="text-xs text-white/50 mt-1">Actionable habit changes to secure daily threshold amounts.</p>
+                  </div>
+
+                  <div className="mt-4 space-y-2.5">
+                    <div className="p-3 bg-black/25 rounded-xl border border-white/5 flex gap-2.5 leading-relaxed text-xs">
+                      <span className="text-lg">☕</span>
+                      <div>
+                        <h5 className="font-semibold text-white/90 text-[11px]">Caffeine Node Opt-Out</h5>
+                        <p className="text-[11px] text-white/50 leading-normal">Brew cafe vectors locally 3 times to save <strong className="text-cyan-400 font-mono">{formatAmount(15)}/wk</strong>.</p>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-black/25 rounded-xl border border-white/5 flex gap-2.5 leading-relaxed text-xs">
+                      <span className="text-lg">🚲</span>
+                      <div>
+                        <h5 className="font-semibold text-white/90 text-[11px]">Aesthetic Logistics</h5>
+                        <p className="text-[11px] text-white/50 leading-normal">Opt for cycle transit on short tasks to reclaim <strong className="text-cyan-400 font-mono">{formatAmount(10)}/wk</strong>.</p>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-black/25 rounded-xl border border-white/5 flex gap-2.5 leading-relaxed text-xs">
+                      <span className="text-lg">🍿</span>
+                      <div>
+                        <h5 className="font-semibold text-white/90 text-[11px]">Neural Sync Purge</h5>
+                        <p className="text-[11px] text-white/50 leading-normal">Consolidate auxiliary media nodes to secure <strong className="text-cyan-400 font-mono">{formatAmount(12)}/mo</strong>.</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
