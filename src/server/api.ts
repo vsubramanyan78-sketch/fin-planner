@@ -488,4 +488,53 @@ Return strictly JSON:
   }
 });
 
+router.post("/ai/categorize", authMiddleware, async (req: any, res) => {
+  const { title, amount } = req.body;
+  if (!title) return res.json({ category: "Other" });
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: `Categorize this transaction. Merchant/Vendor: "${title}". Transaction Amount: ${amount || 0}. Select exactly one of the following category strings: ["Food", "Utilities", "Entertainment", "Housing", "Salary", "Transport", "Shopping", "Investment", "Other"]. Return strictly JSON format matching {"category": "..."}.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            category: { type: Type.STRING }
+          },
+          required: ["category"]
+        }
+      }
+    });
+
+    const parsed = JSON.parse(response.text?.replace(/\`\`\`json/g, "").replace(/\`\`\`/g, "") || "{}");
+    const allowedCategories = ["Food", "Utilities", "Entertainment", "Housing", "Salary", "Transport", "Shopping", "Investment", "Other"];
+    const matchedCategory = allowedCategories.find(c => c.toLowerCase() === parsed.category?.toLowerCase() || parsed.category?.toLowerCase().includes(c.toLowerCase())) || "Other";
+    res.json({ category: matchedCategory });
+  } catch (err) {
+    // Keyword fallback optimizer
+    const text = title.toLowerCase();
+    let finalCategory = "Other";
+    const catKeywords: Record<string, string[]> = {
+      'Food': ['groceries', 'food', 'dinner', 'lunch', 'coffee', 'restaurant', 'eat', 'starbucks', 'breakfast', 'subway', 'mcdonalds'],
+      'Utilities': ['bill', 'power', 'utility', 'water', 'electricity', 'gas bill', 'internet', 'wifi', 'phone', 'comcast'],
+      'Entertainment': ['movie', 'netflix', 'game', 'concert', 'spotify', 'disney', 'play', 'subscription', 'fun'],
+      'Housing': ['rent', 'mortgage', 'housing', 'apartment', 'home'],
+      'Salary': ['salary', 'paycheck', 'dividend', 'stripe payout'],
+      'Transport': ['bus', 'train', 'uber', 'lyft', 'taxi', 'gas', 'subway', 'transportation', 'toll'],
+      'Shopping': ['clothes', 'shoes', 'amazon', 'mall', 'shopping', 'store', 'target', 'walmart'],
+      'Investment': ['stock', 'crypto', 'investment', 'savings', 'deposit']
+    };
+
+    for (const [catName, words] of Object.entries(catKeywords)) {
+      if (words.some(word => text.includes(word))) {
+        finalCategory = catName;
+        break;
+      }
+    }
+    res.json({ category: finalCategory });
+  }
+});
+
 export default router;

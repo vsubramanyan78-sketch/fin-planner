@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { format } from 'date-fns';
-import { ArrowUpRight, ArrowDownRight, Wallet, Download, Mic, MicOff, Check, AlertCircle, Plus, Search } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, Wallet, Download, Mic, MicOff, Check, AlertCircle, Plus, Search, Loader2 } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { useCurrency } from '@/src/context/CurrencyContext';
 import { motion, AnimatePresence } from 'motion/react';
@@ -33,6 +33,10 @@ export default function Transactions() {
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState('monthly');
   const [formError, setFormError] = useState('');
+
+  // AI Auto-Tagging state
+  const [isTagging, setIsTagging] = useState(false);
+  const [isAiTagged, setIsAiTagged] = useState(false);
 
   // Voice input state
   const [isListening, setIsListening] = useState(false);
@@ -189,6 +193,38 @@ export default function Transactions() {
     };
   }, [token, loadTransactions]);
 
+  const handleAutoCategorize = async (vendorName?: string, valAmount?: string) => {
+    const targetTitle = vendorName !== undefined ? vendorName : title;
+    const targetAmount = valAmount !== undefined ? valAmount : amount;
+    if (!targetTitle || targetTitle.trim().length < 3) return;
+    setIsTagging(true);
+    try {
+      const response = await fetch('/api/ai/categorize', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          title: targetTitle, 
+          amount: targetAmount ? parseFloat(targetAmount) : 0 
+        }),
+      });
+      if (response.ok) {
+        const result = await response.json();
+        if (result.category) {
+          setCategory(result.category);
+          setIsAiTagged(true);
+          setTimeout(() => setIsAiTagged(false), 2000);
+        }
+      }
+    } catch (err) {
+      console.error("AI Auto-Tag error:", err);
+    } finally {
+      setIsTagging(false);
+    }
+  };
+
   const toggleListening = () => {
     setVoiceError('');
     setVoiceSuccess(false);
@@ -286,7 +322,7 @@ export default function Transactions() {
   });
 
   const exportCSV = () => {
-    const target = searchQuery ? filteredData : data;
+    const target = filteredData;
     if (!target || target.length === 0) return;
     const headers = ['Date', 'Title', 'Category', 'Type', 'Amount', 'Recurring', 'Frequency', 'Notes'];
     const rows = target.map(tx => [
@@ -347,11 +383,27 @@ export default function Transactions() {
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-white/70">Category</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-white/70">Category</Label>
+                      {isTagging && (
+                        <span className="text-[10px] text-cyan-400 font-mono animate-pulse flex items-center gap-1">
+                          <Loader2 className="w-2.5 h-2.5 animate-spin" /> Tagging...
+                        </span>
+                      )}
+                      {isAiTagged && (
+                        <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1 animate-bounce">
+                          <Check className="w-2.5 h-2.5" /> AI Suggestion
+                        </span>
+                      )}
+                    </div>
                     <select
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
-                      className="flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-white/10 bg-[#0f172a] px-3 py-2 text-sm text-white"
+                      className={cn(
+                        "flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-white/10 bg-[#0f172a] px-3 py-2 text-sm text-white transition-all duration-300",
+                        isAiTagged && "border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]",
+                        isTagging && "border-cyan-400 opacity-80"
+                      )}
                     >
                       <option value="Food">Food</option>
                       <option value="Utilities">Utilities</option>
@@ -371,6 +423,7 @@ export default function Transactions() {
                   <Input
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
+                    onBlur={() => handleAutoCategorize()}
                     placeholder="e.g. Acme Supermarket"
                     className="bg-white/5 border-white/10 text-white rounded-lg"
                     required

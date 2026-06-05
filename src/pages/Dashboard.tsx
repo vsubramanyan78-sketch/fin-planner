@@ -1,11 +1,18 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, DollarSign, Activity, AlertCircle, Target, Sparkles, X, HeartPulse, Trophy, Star, Medal, ShieldCheck, Fingerprint, Loader2 } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
+import { 
+  ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, DollarSign, Activity, AlertCircle, 
+  Target, Sparkles, X, HeartPulse, Trophy, Star, Medal, ShieldCheck, Fingerprint, 
+  Loader2, Plus, Camera, Mic, Check, HelpCircle, FileSpreadsheet, RotateCcw
+} from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { useCurrency } from '@/src/context/CurrencyContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
 
 const COLORS = ['#8b5cf6', '#06b6d4', '#f43f5e', '#10b981', '#f59e0b'];
 
@@ -84,11 +91,248 @@ const TiltCard = ({ children, className = "" }: { children: React.ReactNode, cla
 export default function Dashboard() {
   const { token, user } = useAuth();
   const { formatAmount } = useCurrency();
+  const navigate = useNavigate();
   const [transactions, setTransactions] = useState<any[]>([]);
   const [budgets, setBudgets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+
+  // Floating Action Button (FAB) and Quick Action states
+  const [isFabOpen, setIsFabOpen] = useState(false);
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  
+  // Quick Transaction Dialog state
+  const [quickTitle, setQuickTitle] = useState('');
+  const [quickAmount, setQuickAmount] = useState('');
+  const [quickType, setQuickType] = useState('expense');
+  const [quickCategory, setQuickCategory] = useState('Food');
+  
+  // Quick Add Auto-Tagging state
+  const [isQuickTagging, setIsQuickTagging] = useState(false);
+  const [isQuickAiTagged, setIsQuickAiTagged] = useState(false);
+
+  // Voice Command / Quick Micro-Logger State
+  const [isListening, setIsListening] = useState(false);
+  const [voiceSuccess, setVoiceSuccess] = useState(false);
+  const [voiceError, setVoiceError] = useState('');
+  const [transcript, setTranscript] = useState('');
+  const recognitionRef = useRef<any>(null);
+  const transcriptRef = useRef('');
+
+  // Intelligent parser for Quick Voice Commands
+  const parseVoiceCommand = (sentence: string) => {
+    const text = sentence.toLowerCase().trim();
+    
+    // 1. Determine type (default: expense)
+    let finalType = 'expense';
+    if (text.includes('earned') || text.includes('received') || text.includes('salary') || text.includes('income') || text.includes('deposit')) {
+      finalType = 'income';
+    }
+
+    // 2. Determine category
+    let finalCategory = 'Other';
+    const catKeywords: Record<string, string[]> = {
+      'Food': ['groceries', 'food', 'dinner', 'lunch', 'coffee', 'restaurant', 'eat', 'starbucks', 'breakfast', 'subway', 'mcdonalds'],
+      'Utilities': ['bill', 'power', 'utility', 'water', 'electricity', 'gas bill', 'internet', 'wifi', 'phone', 'comcast'],
+      'Entertainment': ['movie', 'netflix', 'game', 'concert', 'spotify', 'disney', 'play', 'subscription', 'fun'],
+      'Housing': ['rent', 'mortgage', 'housing', 'apartment', 'home'],
+      'Salary': ['salary', 'paycheck', 'dividend', 'stripe payout'],
+      'Transport': ['bus', 'train', 'uber', 'lyft', 'taxi', 'gas', 'subway', 'transportation', 'toll'],
+      'Shopping': ['clothes', 'shoes', 'amazon', 'mall', 'shopping', 'store', 'target', 'walmart'],
+      'Investment': ['stock', 'crypto', 'investment', 'savings', 'deposit']
+    };
+
+    for (const [catName, words] of Object.entries(catKeywords)) {
+      if (words.some(word => text.includes(word))) {
+        finalCategory = catName;
+        break;
+      }
+    }
+
+    // 3. Extract Amount
+    let finalAmount = 15.0; // Fallback
+    const digitsMatch = text.match(/\d+(\.\d+)?/);
+    if (digitsMatch) {
+      finalAmount = parseFloat(digitsMatch[0]);
+    } else {
+      const wordToNum: Record<string, number> = {
+        'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+        'eleven': 11, 'twelve': 12, 'fifteen': 15, 'twenty': 20, 'fifty': 50, 'hundred': 100
+      };
+      for (const [w, n] of Object.entries(wordToNum)) {
+        if (text.includes(w)) {
+          finalAmount = n;
+          break;
+        }
+      }
+    }
+
+    // 4. Extract Title (filter numbers and common stop words)
+    const stopWords = [
+      'spent', 'bought', 'paid', 'received', 'earned', 'on', 'at', 'for', 'a', 'an', 'the', 'dollar', 'dollars', 'cents', 'payout', 
+      'monthly', 'weekly', 'and', 'to', 'some', 'from'
+    ];
+    const merchantClean = sentence.replace(/\$?\d+(\.\d+)?/g, '');
+    const words = merchantClean.split(/\s+/).filter(w => {
+      const lower = w.toLowerCase().trim();
+      return lower && !stopWords.includes(lower) && isNaN(Number(lower));
+    });
+
+    const finalTitle = words.slice(0, 3).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || 'Voice Ledger Node';
+
+    return {
+      title: finalTitle,
+      amount: finalAmount,
+      type: finalType,
+      category: finalCategory
+    };
+  };
+
+  const handleVoiceCommand = useCallback(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setVoiceError('Speech recognition is not supported in this browser. Please use Google Chrome or Safari.');
+      return;
+    }
+
+    if (!recognitionRef.current) {
+      const rec = new SpeechRecognition();
+      rec.continuous = false;
+      rec.interimResults = false;
+      rec.lang = 'en-US';
+
+      rec.onstart = () => {
+        setIsListening(true);
+        setVoiceError('');
+        setTranscript('');
+        transcriptRef.current = '';
+      };
+
+      rec.onresult = (event: any) => {
+        const transcriptText = event.results[0][0].transcript;
+        setTranscript(transcriptText);
+        transcriptRef.current = transcriptText;
+      };
+
+      rec.onerror = (event: any) => {
+        setVoiceError(`Voice error: ${event.error}`);
+        setIsListening(false);
+      };
+
+      rec.onend = () => {
+        setIsListening(false);
+        const rawText = transcriptRef.current;
+        if (rawText.trim().length > 0) {
+          setVoiceSuccess(true);
+          const payload = parseVoiceCommand(rawText);
+
+          fetch('/api/transactions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              amount: payload.amount,
+              type: payload.type,
+              title: payload.title,
+              category: payload.category,
+              date: new Date().toISOString()
+            })
+          })
+          .then(() => {
+            fetchDashboardData();
+            window.dispatchEvent(new Event('transactionAdded'));
+            setToastMessage(`Voice Ledger: Created ${payload.title} worth ${formatAmount(payload.amount)}!`);
+            setShowToast(true);
+            setTimeout(() => {
+              setShowToast(false);
+            }, 3000);
+          })
+          .catch(console.error);
+
+          setTimeout(() => {
+            setVoiceSuccess(false);
+            setTranscript('');
+            transcriptRef.current = '';
+          }, 3500);
+        }
+      };
+
+      recognitionRef.current = rec;
+    }
+
+    try {
+      recognitionRef.current.start();
+    } catch {
+      recognitionRef.current.abort();
+    }
+  }, [token, formatAmount]);
+
+  const handleQuickSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = parseFloat(quickAmount);
+    if (isNaN(amt) || amt <= 0 || !quickTitle) return;
+
+    try {
+      await fetch('/api/transactions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          title: quickTitle,
+          amount: amt,
+          type: quickType,
+          category: quickCategory,
+          date: new Date().toISOString()
+        })
+      });
+      setIsQuickAddOpen(false);
+      setQuickTitle('');
+      setQuickAmount('');
+      fetchDashboardData();
+      
+      window.dispatchEvent(new Event('transactionAdded'));
+      setToastMessage('Transaction saved successfully to cloud ledger!');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleQuickAutoCategorize = async () => {
+    if (!quickTitle || quickTitle.trim().length < 3) return;
+    setIsQuickTagging(true);
+    try {
+      const response = await fetch('/api/ai/categorize', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          title: quickTitle, 
+          amount: quickAmount ? parseFloat(quickAmount) : 0 
+        }),
+      });
+      if (response.ok) {
+        const result = await response.json();
+        if (result.category) {
+          setQuickCategory(result.category);
+          setIsQuickAiTagged(true);
+          setTimeout(() => setIsQuickAiTagged(false), 2000);
+        }
+      }
+    } catch (err) {
+      console.error("AI Quick Auto-Tag error:", err);
+    } finally {
+      setIsQuickTagging(false);
+    }
+  };
 
   // AI-Driven Forecast & Insights state
   const [forecastData, setForecastData] = useState<any>(null);
@@ -114,6 +358,8 @@ export default function Dashboard() {
   });
   const [biometricStatus, setBiometricStatus] = useState<'idle' | 'scanning' | 'success' | 'failed'>('idle');
   const [biometricError, setBiometricError] = useState('');
+  const [authMode, setAuthMode] = useState<'biometric' | 'pin'>('biometric');
+  const [pin, setPin] = useState('');
 
   const handleBiometricTrigger = () => {
     setBiometricStatus('scanning');
@@ -244,109 +490,214 @@ export default function Dashboard() {
       <div className="fixed inset-0 z-[100] bg-[#020205] flex flex-col items-center justify-center p-6 text-white font-sans overflow-hidden">
         {/* Futuristic glowing mesh background */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-cyan-500/10 rounded-full blur-[100px] pointer-events-none" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-purple-500/5 rounded-full blur-[80px] pointer-events-none" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-purple-500/0.5 rounded-full blur-[80px] pointer-events-none" />
         
-        <div className="max-w-md w-full text-center space-y-8 relative z-10 animate-in fade-in zoom-in-95 duration-500">
+        <div className="max-w-md w-full text-center space-y-6 relative z-10 animate-in fade-in zoom-in-95 duration-500">
           <div className="flex flex-col items-center gap-2">
             <div className="w-10 h-10 rounded-full bg-cyan-400/10 flex items-center justify-center text-cyan-400 border border-cyan-400/20 shadow-[0_0_15px_rgba(34,211,238,0.2)]">
               <ShieldCheck className="w-5 h-5" />
             </div>
-            <h2 className="text-2xl font-bold font-display tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70 mt-2">NeuroFin Identity Node</h2>
-            <p className="text-xs text-white/40 uppercase tracking-widest font-mono">Secure Authorization Gateway</p>
+            <h2 className="text-2xl font-bold font-display tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70 mt-2">NeuroFin Security</h2>
+            <p className="text-xs text-white/40 uppercase tracking-widest font-mono">Secure Authorization Required</p>
           </div>
 
-          {/* Holographic glowing scanner stage */}
-          <div className="flex flex-col items-center justify-center relative py-6">
-            <div className="w-48 h-48 rounded-full border border-white/5 flex items-center justify-center relative">
-              {/* Outer pulsing ring */}
-              <motion.div 
-                animate={{ scale: [1, 1.05, 1], opacity: [0.1, 0.2, 0.1] }}
-                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-                className="absolute inset-0 rounded-full border-2 border-cyan-400/20"
-              />
-              
-              {/* Spinning compass ticks/loader */}
-              {biometricStatus === 'scanning' && (
-                <motion.div 
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-                  className="absolute inset-2 rounded-full border border-dashed border-cyan-400/30"
-                />
-              )}
-
-              {/* Scanning visual sweep line */}
-              {biometricStatus === 'scanning' && (
-                <motion.div 
-                  initial={{ translateY: -80 }}
-                  animate={{ translateY: 80 }}
-                  transition={{ duration: 1.5, repeat: Infinity, repeatType: 'reverse', ease: "easeInOut" }}
-                  className="absolute left-[10%] right-[10%] h-[2px] bg-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.8)] z-20"
-                />
-              )}
-
-              {/* Core scanning glyph/icon container */}
-              <div className={`w-32 h-32 rounded-full border flex items-center justify-center transition-all duration-500 relative ${
-                biometricStatus === 'scanning' 
-                  ? 'bg-cyan-400/10 border-cyan-400/40 shadow-[0_0_40px_rgba(34,211,238,0.2)]' 
-                  : biometricStatus === 'success'
-                  ? 'bg-emerald-500/10 border-emerald-400/40 shadow-[0_0_40px_rgba(16,185,129,0.3)]'
-                  : biometricStatus === 'failed'
-                  ? 'bg-red-500/10 border-red-500/40 shadow-[0_0_40px_rgba(239,68,68,0.3)]'
-                  : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20'
-              }`}>
-                {biometricStatus === 'success' ? (
-                  <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1 }} transition={{ type: 'spring' }} className="text-emerald-400">
-                    <ShieldCheck className="w-14 h-14" />
-                  </motion.div>
-                ) : biometricStatus === 'failed' ? (
-                  <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1 }} className="text-red-400">
-                    <X className="w-14 h-14" />
-                  </motion.div>
-                ) : (
+          {authMode === 'biometric' ? (
+            <>
+              {/* Holographic glowing scanner stage */}
+              <div className="flex flex-col items-center justify-center relative py-4">
+                <div className="w-48 h-48 rounded-full border border-white/5 flex items-center justify-center relative">
+                  {/* Outer pulsing ring */}
                   <motion.div 
-                    animate={biometricStatus === 'scanning' ? { scale: [1, 1.1, 1] } : {}}
-                    transition={{ duration: 1, repeat: Infinity }}
-                    className={biometricStatus === 'scanning' ? 'text-cyan-400' : 'text-white/60'}
+                    animate={{ scale: [1, 1.05, 1], opacity: [0.1, 0.2, 0.1] }}
+                    transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                    className="absolute inset-0 rounded-full border-2 border-cyan-400/20"
+                  />
+                  
+                  {/* Spinning compass ticks/loader */}
+                  {biometricStatus === 'scanning' && (
+                    <motion.div 
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                      className="absolute inset-2 rounded-full border border-dashed border-cyan-400/30"
+                    />
+                  )}
+
+                  {/* Scanning visual sweep line */}
+                  {biometricStatus === 'scanning' && (
+                    <motion.div 
+                      initial={{ translateY: -80 }}
+                      animate={{ translateY: 80 }}
+                      transition={{ duration: 1.5, repeat: Infinity, repeatType: 'reverse', ease: "easeInOut" }}
+                      className="absolute left-[10%] right-[10%] h-[2px] bg-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.8)] z-20"
+                    />
+                  )}
+
+                  {/* Core scanning glyph/icon container */}
+                  <div className={`w-32 h-32 rounded-full border flex items-center justify-center transition-all duration-500 relative ${
+                    biometricStatus === 'scanning' 
+                      ? 'bg-cyan-400/10 border-cyan-400/40 shadow-[0_0_40px_rgba(34,211,238,0.2)]' 
+                      : biometricStatus === 'success'
+                      ? 'bg-emerald-500/10 border-emerald-400/40 shadow-[0_0_40px_rgba(16,185,129,0.3)]'
+                      : biometricStatus === 'failed'
+                      ? 'bg-red-500/10 border-red-500/40 shadow-[0_0_40px_rgba(239,68,68,0.3)]'
+                      : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20'
+                  }`}>
+                    {biometricStatus === 'success' ? (
+                      <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1 }} transition={{ type: 'spring' }} className="text-emerald-400">
+                        <ShieldCheck className="w-14 h-14" />
+                      </motion.div>
+                    ) : biometricStatus === 'failed' ? (
+                      <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1 }} className="text-red-400">
+                        <X className="w-14 h-14" />
+                      </motion.div>
+                    ) : (
+                      <motion.div 
+                        animate={biometricStatus === 'scanning' ? { scale: [1, 1.1, 1] } : {}}
+                        transition={{ duration: 1, repeat: Infinity }}
+                        className={biometricStatus === 'scanning' ? 'text-cyan-400' : 'text-white/60'}
+                      >
+                        <Fingerprint className="w-14 h-14" />
+                      </motion.div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="min-h-[24px]">
+                  {biometricStatus === 'scanning' && (
+                    <p className="text-sm text-cyan-400 font-mono tracking-wider animate-pulse">VERIFYING BIOMETRICS...</p>
+                  )}
+                  {biometricStatus === 'success' && (
+                    <p className="text-sm text-emerald-400 font-mono tracking-wider font-bold">NODE AUTHORIZED</p>
+                  )}
+                  {biometricStatus === 'failed' && (
+                    <p className="text-sm text-red-400 font-medium">{biometricError}</p>
+                  )}
+                  {biometricStatus === 'idle' && (
+                    <p className="text-sm text-white/50 leading-relaxed max-w-sm mx-auto">Click scanner to activate TouchID / FaceID security verification.</p>
+                  )}
+                </div>
+
+                <div className="scale-100 flex flex-col gap-3">
+                  <Button 
+                    onClick={handleBiometricTrigger} 
+                    disabled={biometricStatus === 'scanning' || biometricStatus === 'success'}
+                    className={`w-full py-6 rounded-xl font-bold tracking-wide transition-all shadow-lg cursor-pointer flex items-center justify-center ${
+                      biometricStatus === 'scanning'
+                        ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/20'
+                        : biometricStatus === 'success'
+                        ? 'bg-emerald-400 text-black border border-transparent'
+                        : 'bg-[#22d3ee] text-black hover:bg-cyan-300 hover:shadow-[0_0_25px_rgba(34,211,238,0.3)] border border-transparent'
+                    }`}
                   >
-                    <Fingerprint className="w-14 h-14" />
-                  </motion.div>
+                    {biometricStatus === 'scanning' ? 'Scanning Biometrics...' : biometricStatus === 'success' ? 'Authorized' : 'Scan Fingerprint / Face ID'}
+                  </Button>
+
+                  <button
+                    onClick={() => {
+                      setAuthMode('pin');
+                      setPin('');
+                    }}
+                    className="text-xs text-cyan-400 hover:text-cyan-300 font-mono tracking-wider cursor-pointer underline flex items-center justify-center gap-1.5"
+                  >
+                    Bypass with Secure Device PIN instead
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Device PIN key entry dots */}
+              <div className="space-y-4 py-2">
+                <p className="text-sm text-white/60 font-mono">ENTER SECURE 4-DIGIT PIN</p>
+                <div className="flex gap-5 justify-center py-2">
+                  {[...Array(4)].map((_, i) => (
+                    <div 
+                      key={i} 
+                      className={`w-4 h-4 rounded-full border border-cyan-400/40 transition-all duration-300 ${
+                        pin.length > i 
+                          ? 'bg-cyan-400 scale-110 shadow-[0_0_12px_#22d3ee]' 
+                          : 'bg-transparent shadow-none'
+                      }`} 
+                    />
+                  ))}
+                </div>
+                {biometricError ? (
+                  <p className="text-xs text-red-400 font-mono animate-shake">{biometricError}</p>
+                ) : (
+                  <p className="text-xs text-white/30 font-mono">Use default PIN "1234" to pass</p>
                 )}
               </div>
-            </div>
-          </div>
 
-          <div className="space-y-4">
-            <div className="min-h-[24px]">
-              {biometricStatus === 'scanning' && (
-                <p className="text-sm text-cyan-400 font-mono tracking-wider animate-pulse">VERIFYING BIOMETRICS...</p>
-              )}
-              {biometricStatus === 'success' && (
-                <p className="text-sm text-emerald-400 font-mono tracking-wider font-bold">NODE AUTHORIZED</p>
-              )}
-              {biometricStatus === 'failed' && (
-                <p className="text-sm text-red-400 font-medium">{biometricError}</p>
-              )}
-              {biometricStatus === 'idle' && (
-                <p className="text-sm text-white/50 leading-relaxed max-w-sm mx-auto">This dashboard contains encrypted financial pipelines. Authorize passkey lock entry.</p>
-              )}
-            </div>
-
-            <div className="scale-100 flex flex-col gap-2">
-              <Button 
-                onClick={handleBiometricTrigger} 
-                disabled={biometricStatus === 'scanning' || biometricStatus === 'success'}
-                className={`w-full py-6 rounded-xl font-bold tracking-wide transition-all shadow-lg cursor-pointer flex items-center justify-center ${
-                  biometricStatus === 'scanning'
-                    ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/20'
-                    : biometricStatus === 'success'
-                    ? 'bg-emerald-400 text-black border border-transparent'
-                    : 'bg-[#22d3ee] text-black hover:bg-cyan-300 hover:shadow-[0_0_25px_rgba(34,211,238,0.3)] border border-transparent'
-                }`}
-              >
-                {biometricStatus === 'scanning' ? 'Scanning Touch ID / Face ID...' : biometricStatus === 'success' ? 'Authorized Successfully' : 'Verify Secure Passkey'}
-              </Button>
-            </div>
-          </div>
+              {/* 3x4 Grid layout tactile custom PIN keypad */}
+              <div className="grid grid-cols-3 gap-3 w-64 mx-auto pt-2">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+                  <button
+                    key={num}
+                    onClick={() => {
+                      if (pin.length < 4) {
+                        const nextPin = pin + num;
+                        setPin(nextPin);
+                        if (nextPin === '1234') {
+                          setBiometricStatus('success');
+                          setTimeout(() => {
+                            setIsBiometricPassed(true);
+                            sessionStorage.setItem('biometric_authorized_session', 'true');
+                          }, 600);
+                        } else if (nextPin.length === 4) {
+                          setBiometricError('Incorrect secure PIN. Resetting...');
+                          setTimeout(() => {
+                            setPin('');
+                            setBiometricError('');
+                          }, 1000);
+                        }
+                      }
+                    }}
+                    className="w-14 h-14 rounded-full bg-white/5 border border-white/10 text-white font-mono font-bold text-lg hover:bg-cyan-400/10 hover:border-cyan-400/30 active:scale-95 transition-all flex items-center justify-center cursor-pointer"
+                  >
+                    {num}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setPin('')}
+                  className="w-14 h-14 rounded-full bg-white/5 text-white/50 text-xs hover:bg-white/10 flex items-center justify-center cursor-pointer font-bold font-mono"
+                >
+                  Clear
+                </button>
+                <button
+                  onClick={() => {
+                    if (pin.length < 4) {
+                      const nextPin = pin + '0';
+                      setPin(nextPin);
+                      if (nextPin === '1234') {
+                        setBiometricStatus('success');
+                        setTimeout(() => {
+                          setIsBiometricPassed(true);
+                          sessionStorage.setItem('biometric_authorized_session', 'true');
+                        }, 600);
+                      } else if (nextPin.length === 4) {
+                        setBiometricError('Incorrect secure PIN. Resetting...');
+                        setTimeout(() => {
+                          setPin('');
+                          setBiometricError('');
+                        }, 1000);
+                      }
+                    }
+                  }}
+                  className="w-14 h-14 rounded-full bg-white/5 border border-white/10 text-white font-mono font-bold text-lg hover:bg-cyan-400/10 hover:border-cyan-400/30 active:scale-95 transition-all flex items-center justify-center cursor-pointer"
+                >
+                  0
+                </button>
+                <button
+                  onClick={() => setAuthMode('biometric')}
+                  className="w-14 h-14 rounded-full bg-white/5 text-cyan-400 hover:bg-white/10 flex items-center justify-center cursor-pointer font-bold"
+                >
+                  <Fingerprint className="w-5 h-5" />
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
@@ -566,7 +917,7 @@ export default function Dashboard() {
                   AI Intelligence Spending Forecast
                 </CardTitle>
                 <p className="text-xs text-white/50 mt-1">
-                  Predictive spending ceilings for next month computed via transactions & flagged recurring parameters.
+                  Predictive spending ceilings computed dynamically from transactions & active recurring ledger channels.
                 </p>
               </div>
               <div className="flex items-center gap-3">
@@ -584,63 +935,123 @@ export default function Dashboard() {
                 <p className="text-xs text-white/40 font-mono tracking-widest uppercase">Analyzing transaction vectors & recurring items...</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-                
-                {/* Visual Projected Ceiling Ring or Bento Box */}
-                <div className="md:col-span-4 flex flex-col justify-center items-center p-6 bg-white/5 rounded-2xl border border-white/10 text-center relative overflow-hidden group">
-                  <div className="absolute -inset-0.5 bg-gradient-to-tr from-purple-500/10 to-cyan-500/10 opacity-30 group-hover:opacity-100 transition-all blur-sm pointer-events-none" />
-                  <span className="text-xs font-mono uppercase text-purple-400 tracking-wider">PROJECTED OUTFLOW</span>
-                  <div className="text-4xl font-black font-mono text-white mt-3 shadow-sm">
-                    {formatAmount(forecastData?.projectedSpending || 1500)}
-                  </div>
-                  <p className="text-[10px] text-white/40 mt-1.5 uppercase font-mono tracking-widest">Next Month Ceiling</p>
+              <div className="space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
                   
-                  {/* Subtle progress indicators */}
-                  <div className="w-full bg-white/5 rounded-full h-1 mt-6 overflow-hidden">
-                    <motion.div 
-                      key="confBar"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${forecastData?.confidenceLevel || 85}%` }}
-                      className="h-full bg-purple-500"
-                    />
+                  {/* Visual Projected Ceiling Ring or Bento Box */}
+                  <div className="md:col-span-4 flex flex-col justify-center items-center p-6 bg-white/5 rounded-2xl border border-white/10 text-center relative overflow-hidden group">
+                    <div className="absolute -inset-0.5 bg-gradient-to-tr from-purple-500/10 to-cyan-500/10 opacity-30 group-hover:opacity-100 transition-all blur-sm pointer-events-none" />
+                    <span className="text-xs font-mono uppercase text-purple-400 tracking-wider">PROJECTED OUTFLOW</span>
+                    <div className="text-4xl font-black font-mono text-white mt-3 shadow-sm">
+                      {formatAmount(forecastData?.projectedSpending || 1500)}
+                    </div>
+                    <p className="text-[10px] text-white/40 mt-1.5 uppercase font-mono tracking-widest">Next Month Ceiling</p>
+                    
+                    {/* Subtle progress indicators */}
+                    <div className="w-full bg-white/5 rounded-full h-1 mt-6 overflow-hidden">
+                      <motion.div 
+                        key="confBar"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${forecastData?.confidenceLevel || 85}%` }}
+                        className="h-full bg-purple-500"
+                      />
+                    </div>
                   </div>
-                </div>
 
-                {/* Reasons / Bullet Explanations */}
-                <div className="md:col-span-4 space-y-3 flex flex-col justify-center">
-                  <h4 className="text-xs font-mono uppercase text-white/50 tracking-wider">Ceiling Rationalization</h4>
-                  <div className="space-y-2.5">
-                    {(forecastData?.reasons || []).map((reason: string, idx: number) => (
-                      <div key={idx} className="flex gap-3 text-xs text-white/80 leading-relaxed items-start">
-                        <div className="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 shrink-0 shadow-[0_0_6px_rgba(168,85,247,0.8)]" />
-                        <p>{reason}</p>
-                      </div>
-                    ))}
+                  {/* Reasons / Bullet Explanations */}
+                  <div className="md:col-span-4 space-y-3 flex flex-col justify-center">
+                    <h4 className="text-xs font-mono uppercase text-white/50 tracking-wider">Ceiling Rationalization</h4>
+                    <div className="space-y-2.5">
+                      {(forecastData?.reasons || []).map((reason: string, idx: number) => (
+                        <div key={idx} className="flex gap-3 text-xs text-white/80 leading-relaxed items-start">
+                          <div className="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 shrink-0 shadow-[0_0_6px_rgba(168,85,247,0.8)]" />
+                          <p>{reason}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                {/* Category Outlay Distribution List */}
-                <div className="md:col-span-4 space-y-3 flex flex-col justify-center">
-                  <h4 className="text-xs font-mono uppercase text-white/50 tracking-wider">Projected Category Breakdown</h4>
-                  <div className="space-y-2">
-                    {(forecastData?.categoryBreakdown || []).slice(0, 4).map((item: any, idx: number) => {
-                      const percentages = [40, 25, 20, 15];
-                      return (
-                        <div key={idx} className="space-y-1">
-                          <div className="flex justify-between text-xs font-mono text-white/70">
-                            <span>{item.category}</span>
-                            <span className="text-white font-bold">{formatAmount(item.projectedAmount)}</span>
+                  {/* Category Outlay Distribution List */}
+                  <div className="md:col-span-4 space-y-3 flex flex-col justify-center">
+                    <h4 className="text-xs font-mono uppercase text-white/50 tracking-wider">Projected Category Breakdown</h4>
+                    <div className="space-y-2">
+                      {(forecastData?.categoryBreakdown || []).slice(0, 4).map((item: any, idx: number) => {
+                        const percentages = [40, 25, 20, 15];
+                        return (
+                          <div key={idx} className="space-y-1">
+                            <div className="flex justify-between text-xs font-mono text-white/70">
+                              <span>{item.category}</span>
+                              <span className="text-white font-bold">{formatAmount(item.projectedAmount)}</span>
+                            </div>
+                            <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: `${percentages[idx] || 20}%` }}
+                                className="h-full bg-cyan-400"
+                              />
+                            </div>
                           </div>
-                          <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                            <motion.div 
-                              initial={{ width: 0 }}
-                              animate={{ width: `${percentages[idx] || 20}%` }}
-                              className="h-full bg-cyan-400"
-                            />
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Multi-Month AI Spending Forecast Section */}
+                <div className="pt-6 border-t border-white/5 space-y-6">
+                  <div>
+                    <h4 className="text-xs font-mono uppercase text-purple-400 tracking-wider font-bold flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5" /> 3-Month Trajectory Projection
+                    </h4>
+                    <p className="text-[10px] text-white/40 mt-1">
+                      Multi-month forecast modeling based on continuous historic transaction cycles.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                    {/* Visual graph line projection */}
+                    <div className="lg:col-span-8 h-[200px] w-full bg-white/[0.01] border border-white/5 rounded-2xl p-4">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={forecastData?.threeMonthTrend || [
+                          { month: "Month 1 Proj", projectedSpending: (forecastData?.projectedSpending || 1500) * 1.05 },
+                          { month: "Month 2 Proj", projectedSpending: (forecastData?.projectedSpending || 1500) * 0.98 },
+                          { month: "Month 3 Proj", projectedSpending: (forecastData?.projectedSpending || 1500) * 1.08 }
+                        ]} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
+                          <defs>
+                            <linearGradient id="purpleGlow" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#a855f7" stopOpacity={0.25}/>
+                              <stop offset="95%" stopColor="#a855f7" stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
+                          <XAxis dataKey="month" stroke="rgba(255,255,255,0.3)" fontSize={9} tickLine={false} axisLine={false} />
+                          <YAxis stroke="rgba(255,255,255,0.3)" fontSize={9} tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} />
+                          <RechartsTooltip content={<CustomTooltip />} />
+                          <Area type="monotone" dataKey="projectedSpending" name="Projected Outlay" stroke="#a855f7" strokeWidth={2.5} fillOpacity={1} fill="url(#purpleGlow)" />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* Timeline forecast metric cards */}
+                    <div className="lg:col-span-4 space-y-3">
+                      {(forecastData?.threeMonthTrend || [
+                        { month: "Month 1 Proj", projectedSpending: (forecastData?.projectedSpending || 1500) * 1.05 },
+                        { month: "Month 2 Proj", projectedSpending: (forecastData?.projectedSpending || 1500) * 0.98 },
+                        { month: "Month 3 Proj", projectedSpending: (forecastData?.projectedSpending || 1500) * 1.08 }
+                      ]).map((item: any, idx: number) => (
+                        <div key={idx} className="p-3 bg-white/5 border border-white/10 rounded-xl flex items-center justify-between transition-all hover:bg-white/10">
+                          <div>
+                            <span className="text-[9px] font-mono text-purple-400 font-bold uppercase tracking-widest">Projection M+{idx + 1}</span>
+                            <p className="text-white text-xs font-semibold uppercase mt-0.5">{item.month}</p>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[9px] font-mono text-white/30 uppercase">Expected Spend</span>
+                            <p className="text-sm font-black font-mono text-white mt-0.5">{formatAmount(item.projectedSpending)}</p>
                           </div>
                         </div>
-                      );
-                    })}
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -873,6 +1284,185 @@ export default function Dashboard() {
         </Card>
       </motion.div>
 
+      {/* Automated AI Budget Health Monitor & Category Progress Centre */}
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }} 
+        animate={{ opacity: 1, y: 0 }} 
+        transition={{ delay: 0.39 }}
+      >
+        <Card className="glass-card border-none overflow-hidden mt-6">
+          <CardHeader className="pb-3 border-b border-white/5">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-full bg-cyan-500/10 border border-cyan-400/20 flex items-center justify-center text-cyan-400 shrink-0">
+                  <Activity className="w-5 h-5 shadow-[0_0_15px_rgba(34,211,238,0.4)] animate-pulse" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg font-bold text-white font-display">
+                    AI Budget Health & Category Integrity Tracker
+                  </CardTitle>
+                  <p className="text-xs text-white/50 mt-1">
+                    Automated monitor tracking spending velocity deviations compared to the 3-month forecast models.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              
+              {/* Category-level Budget Progress Bars */}
+              <div className="lg:col-span-7 space-y-4">
+                <h4 className="text-xs font-mono text-cyan-400 uppercase tracking-widest font-bold">Category Budgets</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {["Food", "Utilities", "Entertainment", "Housing", "Transport", "Shopping", "Investment"].map((cat) => {
+                    const dbBudget = budgets.find((b: any) => b.category?.toLowerCase() === cat.toLowerCase());
+                    const limit = dbBudget ? dbBudget.limit_amount : (cat === 'Food' ? 500 : cat === 'Utilities' ? 250 : cat === 'Entertainment' ? 300 : cat === 'Housing' ? 1200 : cat === 'Transport' ? 150 : cat === 'Shopping' ? 350 : 400);
+                    const spent = transactions
+                      .filter((t: any) => t.type === 'expense' && t.category?.toLowerCase() === cat.toLowerCase())
+                      .reduce((acc: number, t: any) => acc + t.amount, 0);
+
+                    const percent = Math.min(100, Math.round(limit > 0 ? (spent / limit) * 100 : 0));
+                    
+                    // Styled colors based on categories
+                    const catColors: Record<string, string> = {
+                      food: "from-emerald-400 to-teal-500 shadow-[0_0_8px_rgba(52,211,153,0.3)]",
+                      utilities: "from-amber-400 to-yellow-500 shadow-[0_0_8px_rgba(251,191,36,0.3)]",
+                      entertainment: "from-purple-400 to-indigo-500 shadow-[0_0_8px_rgba(167,139,250,0.3)]",
+                      housing: "from-blue-400 to-cyan-500 shadow-[0_0_8px_rgba(96,165,250,0.3)]",
+                      transport: "from-cyan-400 to-blue-500 shadow-[0_0_8px_rgba(34,211,238,0.3)]",
+                      shopping: "from-pink-400 to-rose-400 shadow-[0_0_8px_rgba(244,114,182,0.3)]",
+                      investment: "from-violet-400 to-pink-500 shadow-[0_0_8px_rgba(139,92,246,0.3)]",
+                    };
+                    const colorClasses = catColors[cat.toLowerCase()] || "from-slate-400 to-white";
+
+                    return (
+                      <div key={cat} className="p-4 bg-white/5 border border-white/5 rounded-2xl flex flex-col justify-between space-y-3 hover:bg-white/10 transition-all duration-300">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-white/90">{cat === 'Food' ? 'Food / Groceries' : cat}</span>
+                          <span className="text-[10px] font-mono text-white/40">{formatAmount(spent)} / {formatAmount(limit)}</span>
+                        </div>
+                        <div className="w-full bg-white/5 rounded-full h-2 overflow-hidden">
+                          <motion.div 
+                            initial={{ width: 0 }}
+                            animate={{ width: `${percent}%` }}
+                            transition={{ duration: 0.6 }}
+                            className={`h-full bg-gradient-to-r ${colorClasses}`}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] font-mono">
+                          <span className={percent > 100 ? "text-red-400 font-bold" : percent > 80 ? "text-amber-400" : "text-emerald-400"}>
+                            {percent}% consumed
+                          </span>
+                          <span>
+                            {percent > 100 ? "Over Limit!" : percent > 80 ? "Approaching Limit" : "Optimal Vector"}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Automated AI "Budget Health" Deviation Monitor */}
+              <div className="lg:col-span-15 space-y-4">
+                <h4 className="text-xs font-mono text-purple-400 uppercase tracking-widest font-bold">Neural Health Monitor</h4>
+                
+                <div className="bg-white/5 border border-white/5 rounded-2xl p-5 space-y-4">
+                  {/* Spend deviation analysis engine */}
+                  {(() => {
+                    const deviationAlerts: any[] = [];
+                    
+                    ["Food", "Utilities", "Entertainment", "Housing", "Transport", "Shopping", "Investment"].forEach((cat) => {
+                      const dbBudget = budgets.find((b: any) => b.category?.toLowerCase() === cat.toLowerCase());
+                      const limit = dbBudget ? dbBudget.limit_amount : (cat === 'Food' ? 500 : cat === 'Utilities' ? 250 : cat === 'Entertainment' ? 300 : cat === 'Housing' ? 1200 : cat === 'Transport' ? 150 : cat === 'Shopping' ? 350 : 400);
+                      const spent = transactions
+                        .filter((t: any) => t.type === 'expense' && t.category?.toLowerCase() === cat.toLowerCase())
+                        .reduce((acc: number, t: any) => acc + t.amount, 0);
+
+                      // Match category projectedAmount from 3-month forecast model to compute deviation
+                      const forecastItem = forecastData?.categoryBreakdown?.find((f: any) => f.category?.toLowerCase() === cat.toLowerCase());
+                      const expectedAmount = forecastItem ? forecastItem.projectedAmount : limit * 0.9;
+                      
+                      const deviationPercent = expectedAmount > 0 ? ((spent - expectedAmount) / expectedAmount) * 100 : 0;
+                      
+                      if (deviationPercent > 8) { // deviance is > 8% higher than projected
+                        deviationAlerts.push({
+                          category: cat,
+                          spent,
+                          expectedAmount,
+                          deviationPercent: Math.round(deviationPercent)
+                        });
+                      }
+                    });
+
+                    return (
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${
+                            deviationAlerts.length > 0
+                              ? 'bg-amber-400/10 border-amber-400/20 text-amber-400'
+                              : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                          }`}>
+                            <HeartPulse className="w-4.5 h-4.5 animate-pulse" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-mono uppercase tracking-wider text-white/50">SYSTEM DIAGNOSTIC</p>
+                            <h5 className="text-sm font-bold text-white">
+                              {deviationAlerts.length > 0 ? "Budget Boundary Deviations" : "Budget Soundness is Optimal"}
+                            </h5>
+                          </div>
+                        </div>
+
+                        {deviationAlerts.length > 0 ? (
+                          <div className="space-y-3">
+                            <p className="text-xs text-white/60 leading-normal">
+                              The automated boundary sentinel has detected active categories exceeding their 3-month projected neural spend coordinates. High caution recommended:
+                            </p>
+                            <div className="space-y-2 max-h-[220px] overflow-y-auto pr-2">
+                              {deviationAlerts.map((alert, i) => (
+                                <motion.div 
+                                  initial={{ opacity: 0, x: -10 }}
+                                  animate={{ opacity: 1, x: 0 }}
+                                  transition={{ delay: i * 0.05 }}
+                                  key={alert.category} 
+                                  className="p-3 bg-red-500/5 border border-red-500/10 rounded-xl space-y-1.5"
+                                >
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="font-bold text-white">{alert.category} Boundary Alert</span>
+                                    <span className="text-red-400 font-mono font-bold">+{alert.deviationPercent}% deviation</span>
+                                  </div>
+                                  <p className="text-[10px] text-white/40 leading-normal">
+                                    Real expenditure is <strong className="text-white font-mono">{formatAmount(alert.spent)}</strong> compared to the projected trend budget coordinate of <span className="font-mono text-cyan-400">{formatAmount(alert.expectedAmount)}</span>.
+                                  </p>
+                                </motion.div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            <p className="text-xs text-white/60 leading-normal">
+                              Quantum vectors are perfectly synchronized. Your active spending patterns are fully aligned with the 3-month simulated forecast envelopes.
+                            </p>
+                            <div className="p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-xl">
+                              <span className="text-xs text-emerald-400 font-bold font-mono">✓ boundary compliance 100%</span>
+                              <p className="text-[10px] text-white/40 leading-normal mt-1">
+                                No boundary deviations detected. Daily, weekly velocities and billing vectors are within projected limits. Keep it up!
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="lg:col-span-2">
           <Card className="glass-card border-none h-[100%]">
@@ -975,6 +1565,242 @@ export default function Dashboard() {
             </Card>
           </motion.div>
         </div>
+      </div>
+
+      {/* Voice Recording Active HUD Overlay */}
+      <AnimatePresence>
+        {isListening && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="fixed inset-0 z-50 bg-[#020203]/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in"
+          >
+            <div className="bg-[#0b0f19] border border-cyan-500/30 rounded-3xl p-8 max-w-sm w-full text-center space-y-6 shadow-[0_0_50px_rgba(34,211,238,0.15)] relative overflow-hidden">
+              <div className="absolute -top-12 -left-12 w-24 h-24 bg-cyan-500/10 rounded-full blur-2xl" />
+              <div className="absolute -bottom-12 -right-12 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl" />
+              
+              <div className="relative">
+                <div className="w-20 h-20 bg-cyan-400/10 border border-cyan-400/20 rounded-full flex items-center justify-center mx-auto relative">
+                  <div className="absolute inset-0 bg-cyan-400/20 rounded-full animate-ping opacity-70" />
+                  <Mic className="w-8 h-8 text-cyan-400 animate-pulse animate-bounce" />
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <h3 className="text-lg font-bold font-display text-white">Quantum Voice Recorder</h3>
+                <p className="text-xs text-cyan-400 font-mono tracking-widest uppercase animate-pulse">LISTENING IN REAL-TIME...</p>
+              </div>
+
+              <div className="p-4 bg-white/5 border border-white/5 rounded-2xl">
+                <p className="text-xs text-white/40 font-mono italic">
+                  {transcript || '"Spent 15 dollars on coffee at Starbucks"'}
+                </p>
+              </div>
+
+              <Button
+                type="button"
+                onClick={() => {
+                  if (recognitionRef.current) recognitionRef.current.abort();
+                  setIsListening(false);
+                }}
+                className="bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-xl px-6 py-2 text-xs font-mono font-bold cursor-pointer"
+              >
+                ABORT LOGGING
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Quick Add Transaction Dialog */}
+      <Dialog open={isQuickAddOpen} onOpenChange={setIsQuickAddOpen}>
+        <DialogContent className="bg-[#0b0f19] border border-white/10 text-white rounded-3xl p-6 shadow-2xl max-w-md w-full">
+          <DialogHeader className="border-b border-white/5 pb-3">
+            <DialogTitle className="text-xl font-display font-bold text-white flex items-center gap-2">
+              <Plus className="w-5 h-5 text-cyan-400" /> Quick Ledger Add
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleQuickSubmit} className="space-y-4 pt-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-mono text-white/50 uppercase tracking-wider font-bold">Transaction Description</label>
+              <input
+                type="text"
+                required
+                value={quickTitle}
+                onChange={(e) => setQuickTitle(e.target.value)}
+                onBlur={handleQuickAutoCategorize}
+                placeholder="e.g., Starbucks Coffee"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-400 font-sans"
+              />
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-white/50 uppercase tracking-wider font-bold">Value amount</label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cyan-400" />
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={quickAmount}
+                    onChange={(e) => setQuickAmount(e.target.value)}
+                    placeholder="12.50"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-400 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-white/50 uppercase tracking-wider font-bold">Ledger flow</label>
+                <select
+                  value={quickType}
+                  onChange={(e) => setQuickType(e.target.value)}
+                  className="w-full bg-[#0b0f19] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
+                >
+                  <option value="expense">Expense</option>
+                  <option value="income">Income</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-mono text-white/50 uppercase tracking-wider font-bold">Ledger Category</label>
+                {isQuickTagging && (
+                  <span className="text-[10px] text-cyan-400 font-mono animate-pulse flex items-center gap-1">
+                    <Loader2 className="w-2.5 h-2.5 animate-spin" /> Tagging...
+                  </span>
+                )}
+                {isQuickAiTagged && (
+                  <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1 animate-bounce">
+                    <Check className="w-2.5 h-2.5" /> AI Tagged
+                  </span>
+                )}
+              </div>
+              <select
+                value={quickCategory}
+                onChange={(e) => setQuickCategory(e.target.value)}
+                className={cn(
+                  "w-full bg-[#0b0f19] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-400 cursor-pointer transition-all duration-300",
+                  isQuickAiTagged && "border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]",
+                  isQuickTagging && "border-cyan-400 opacity-80"
+                )}
+              >
+                <option value="Food">Food / Groceries</option>
+                <option value="Utilities">Utilities</option>
+                <option value="Transport">Transport</option>
+                <option value="Entertainment">Entertainment</option>
+                <option value="Housing">Housing</option>
+                <option value="Shopping">Shopping</option>
+                <option value="Salary">Salary / Intake</option>
+                <option value="Investment">Investment</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setIsQuickAddOpen(false)}
+                className="flex-1 bg-white/5 hover:bg-white/10 text-white rounded-xl text-xs py-2.5 font-mono font-bold border border-white/5 cursor-pointer"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="flex-1 bg-gradient-to-r from-cyan-400 to-purple-500 text-white hover:opacity-90 font-bold rounded-xl text-xs py-2.5 shadow-[0_0_15px_rgba(34,211,238,0.2)] border-transparent cursor-pointer"
+              >
+                Sync Transaction
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dynamic Multi-Action FAB */}
+      <div className="fixed bottom-24 right-5 md:right-8 z-45 flex flex-col items-end gap-3.5">
+        <AnimatePresence>
+          {isFabOpen && (
+            <div className="flex flex-col items-end gap-3">
+              {/* Action 1: Scan Receipt */}
+              <motion.button
+                type="button"
+                initial={{ opacity: 0, y: 15, scale: 0.8 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 15, scale: 0.8 }}
+                transition={{ duration: 0.15 }}
+                onClick={() => {
+                  setIsFabOpen(false);
+                  navigate('/scan');
+                }}
+                className="flex items-center gap-2.5 px-3 py-2 bg-[#22d3ee] hover:bg-cyan-400 text-black font-mono font-bold text-xs rounded-xl shadow-lg border-transparent flex-row cursor-pointer hover:scale-105 transition-all"
+              >
+                <span>Scan Receipt Sheet</span>
+                <span className="w-7 h-7 bg-black/10 rounded-lg flex items-center justify-center">
+                  <Camera className="w-4 h-4 text-black" />
+                </span>
+              </motion.button>
+
+              {/* Action 2: Voice Entry */}
+              <motion.button
+                type="button"
+                initial={{ opacity: 0, y: 15, scale: 0.8 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 15, scale: 0.8 }}
+                transition={{ duration: 0.15, delay: 0.04 }}
+                onClick={() => {
+                  setIsFabOpen(false);
+                  handleVoiceCommand();
+                }}
+                className="flex items-center gap-2.5 px-3 py-2 bg-purple-500 hover:bg-purple-600 text-white font-mono font-bold text-xs rounded-xl shadow-lg border-transparent flex-row cursor-pointer hover:scale-105 transition-all"
+              >
+                <span>Voice Ledger Log</span>
+                <span className="w-7 h-7 bg-white/10 rounded-lg flex items-center justify-center">
+                  <Mic className="w-4 h-4 text-white" />
+                </span>
+              </motion.button>
+
+              {/* Action 3: Quick Add */}
+              <motion.button
+                type="button"
+                initial={{ opacity: 0, y: 15, scale: 0.8 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 15, scale: 0.8 }}
+                transition={{ duration: 0.15, delay: 0.08 }}
+                onClick={() => {
+                  setIsFabOpen(false);
+                  setIsQuickAddOpen(true);
+                }}
+                className="flex items-center gap-2.5 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-black font-mono font-bold text-xs rounded-xl shadow-lg border-transparent flex-row cursor-pointer hover:scale-105 transition-all"
+              >
+                <span>Standard Quick Add</span>
+                <span className="w-7 h-7 bg-black/10 rounded-lg flex items-center justify-center">
+                  <Plus className="w-4 h-4 text-black" />
+                </span>
+              </motion.button>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Master Toggle Trigger */}
+        <button
+          type="button"
+          onClick={() => setIsFabOpen(!isFabOpen)}
+          className={`w-14 h-14 rounded-full flex items-center justify-center text-white bg-gradient-to-r from-cyan-400 to-purple-500 shadow-[0_0_20px_rgba(34,211,238,0.4)] cursor-pointer hover:scale-105 transition-all duration-300 relative overflow-hidden group ${
+            isFabOpen ? 'rotate-95' : ''
+          }`}
+        >
+          <div className="absolute top-0 right-0 bottom-0 left-0 bg-white/15 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <motion.div
+            animate={{ rotate: isFabOpen ? 45 : 0 }}
+            transition={{ type: "spring", stiffness: 200, damping: 15 }}
+          >
+            <Plus className="w-6 h-6 text-white" />
+          </motion.div>
+        </button>
       </div>
     </div>
   );

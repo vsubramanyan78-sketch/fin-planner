@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/src/context/AuthContext';
-import { Home, PieChart, CreditCard, Camera, Settings, LogOut, Bot, Menu, X, Bell, AlertTriangle, RefreshCw } from 'lucide-react';
+import { useCurrency } from '@/src/context/CurrencyContext';
+import { Home, PieChart, CreditCard, Camera, Settings, LogOut, Bot, Menu, X, Bell, AlertTriangle, RefreshCw, CloudLightning } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -9,6 +10,7 @@ import AiAssistantPanel from './AiAssistantPanel';
 
 export default function Layout() {
   const { user, logout, token } = useAuth();
+  const { currency, setCurrency } = useCurrency();
   const location = useLocation();
   const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isAiPanelOpen, setAiPanelOpen] = useState(false);
@@ -119,11 +121,42 @@ export default function Layout() {
 
       {/* Sidebar - Desktop */}
       <aside className="hidden md:flex w-64 flex-col border-r border-border/20 glass shadow-2xl relative z-10">
-        <div className="p-6">
+        <div className="p-6 pb-2">
           <h1 className="text-2xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500 flex items-center gap-2">
             <Bot className="w-8 h-8 text-cyan-400" />
             NeuroFin
           </h1>
+        </div>
+
+        {/* Cloud Sync Status Indicator */}
+        <div className="px-4 mb-3">
+          <div className="flex items-center gap-2 px-3.5 py-1.5 bg-emerald-500/5 border border-emerald-500/10 rounded-xl text-[9px] text-emerald-400 font-mono">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="font-bold uppercase tracking-widest leading-none">ALL OUTLAYS SYNCED TO CLOUD</span>
+          </div>
+        </div>
+
+        {/* Currency Switcher Dropdown */}
+        <div className="px-4 mb-3">
+          <div className="bg-white/5 border border-white/10 rounded-xl p-2 flex items-center justify-between">
+            <span className="text-[9px] font-mono text-white/40 uppercase tracking-widest pl-1.5 font-bold">Base Currency</span>
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              className="bg-[#0b0f19] border border-white/10 rounded-lg py-1 px-2 text-xs font-mono font-bold text-cyan-400 focus:outline-none focus:border-cyan-400 cursor-pointer"
+            >
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+              <option value="GBP">GBP (£)</option>
+              <option value="JPY">JPY (¥)</option>
+              <option value="CAD">CAD (C$)</option>
+              <option value="AUD">AUD (A$)</option>
+              <option value="INR">INR (₹)</option>
+            </select>
+          </div>
         </div>
 
         {/* Live Notification Indicator Hub */}
@@ -286,7 +319,7 @@ export default function Layout() {
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              className="md:hidden absolute top-[73px] left-0 right-0 glass z-30 border-b border-border/20"
+              className="md:hidden absolute top-[73px] left-0 right-0 glass z-30 border-b border-border/20 shadow-2xl"
             >
               <nav className="p-4 space-y-2">
                 {navItems.map((item) => (
@@ -299,6 +332,36 @@ export default function Layout() {
                     </div>
                   </Link>
                 ))}
+
+                {/* Cloud Sync Status (Mobile) */}
+                <div className="px-4 py-2 mt-2 border-t border-white/5 flex items-center justify-between">
+                  <span className="text-[9px] font-mono text-emerald-400/80 uppercase tracking-wider font-bold">Ledger Cloud Status</span>
+                  <div className="flex items-center gap-1.5 font-mono text-[9px] text-emerald-400">
+                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                    SYNCED
+                  </div>
+                </div>
+
+                {/* Currency Switcher Dropdown (Mobile) */}
+                <div className="px-4 py-3 border-t border-white/5 flex items-center justify-between">
+                  <span className="text-xs font-mono text-white/50 uppercase tracking-widest font-bold">Base Currency</span>
+                  <select
+                    value={currency}
+                    onChange={(e) => {
+                      setCurrency(e.target.value);
+                      setMobileMenuOpen(false);
+                    }}
+                    className="bg-[#0b0f19] border border-white/10 rounded-xl py-1.5 px-3 text-xs font-mono font-bold text-cyan-400 focus:outline-none focus:border-cyan-400 cursor-pointer"
+                  >
+                    <option value="USD">USD ($)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="GBP">GBP (£)</option>
+                    <option value="JPY">JPY (¥)</option>
+                    <option value="CAD">CAD (C$)</option>
+                    <option value="AUD">AUD (A$)</option>
+                    <option value="INR">INR (₹)</option>
+                  </select>
+                </div>
               </nav>
             </motion.div>
           )}
