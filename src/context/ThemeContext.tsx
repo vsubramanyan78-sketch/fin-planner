@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import { safeStorage } from '@/lib/storage';
 
 type Theme = 'neon-dark' | 'frosted-glass';
 
@@ -20,19 +21,19 @@ const ThemeContext = createContext<ThemeContextType>({
 
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   const [syncWithSystem, setSyncWithSystemState] = useState(() => {
-    return localStorage.getItem('theme_sync_system') === 'true';
+    return safeStorage.getItem('theme_sync_system') === 'true';
   });
   
   const [theme, setTheme] = useState<Theme>(() => {
-    if (localStorage.getItem('theme_sync_system') === 'true') {
+    if (safeStorage.getItem('theme_sync_system') === 'true') {
       const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       return isDark ? 'neon-dark' : 'frosted-glass';
     }
-    return (localStorage.getItem('user_theme') as Theme) || 'neon-dark';
+    return (safeStorage.getItem('user_theme') as Theme) || 'neon-dark';
   });
 
   const setSyncWithSystem = (sync: boolean) => {
-    localStorage.setItem('theme_sync_system', sync ? 'true' : 'false');
+    safeStorage.setItem('theme_sync_system', sync ? 'true' : 'false');
     setSyncWithSystemState(sync);
     if (sync) {
       const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -41,7 +42,7 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const setThemeWithStorage = (newTheme: Theme) => {
-    localStorage.setItem('user_theme', newTheme);
+    safeStorage.setItem('user_theme', newTheme);
     setTheme(newTheme);
   };
 

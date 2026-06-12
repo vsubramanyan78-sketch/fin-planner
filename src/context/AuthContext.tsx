@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { safeStorage } from '@/lib/storage';
 
 type User = {
   id: string;
@@ -24,7 +25,7 @@ const AuthContext = createContext<AuthContextType>({
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem("token") || null);
+  const [token, setToken] = useState<string | null>(safeStorage.getItem("token") || null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -40,13 +41,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(data.user);
         } else {
           setToken(null);
-          localStorage.removeItem("token");
+          safeStorage.removeItem("token");
         }
         setLoading(false);
       })
       .catch(() => {
         setToken(null);
-        localStorage.removeItem("token");
+        safeStorage.removeItem("token");
         setLoading(false);
       });
     } else {
@@ -55,13 +56,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [token]);
 
   const login = (newToken: string, user: User) => {
-    localStorage.setItem("token", newToken);
+    safeStorage.setItem("token", newToken);
     setToken(newToken);
     setUser(user);
   };
 
   const logout = () => {
-    localStorage.removeItem("token");
+    safeStorage.removeItem("token");
     setToken(null);
     setUser(null);
   };

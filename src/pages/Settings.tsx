@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/src/context/AuthContext';
 import { useCurrency } from '@/src/context/CurrencyContext';
 import { useTheme } from '@/src/context/ThemeContext';
+import { safeStorage } from '@/lib/storage';
 import { User, Bell, Shield, Repeat, Plus, PieChart, Sun, Moon, ShieldCheck, Fingerprint } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -17,7 +18,7 @@ export default function Settings() {
   const { user, logout, token } = useAuth();
   const { formatAmount } = useCurrency();
   const [activeTab, setActiveTab] = useState<'general' | 'subscriptions' | 'budgets'>('general');
-  const [biometricEnabled, setBiometricEnabled] = useState(() => localStorage.getItem('biometric_auth_enabled') === 'true');
+  const [biometricEnabled, setBiometricEnabled] = useState(() => safeStorage.getItem('biometric_auth_enabled') === 'true');
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [budgets, setBudgets] = useState<any[]>([]);
   
@@ -225,7 +226,7 @@ export default function Settings() {
                   <button 
                     onClick={() => {
                       const nextVal = !biometricEnabled;
-                      localStorage.setItem('biometric_auth_enabled', nextVal ? 'true' : 'false');
+                      safeStorage.setItem('biometric_auth_enabled', nextVal ? 'true' : 'false');
                       setBiometricEnabled(nextVal);
                       
                       // Also clear local session token if turning off, so it resets

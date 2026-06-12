@@ -7,6 +7,7 @@ import { motion } from 'motion/react';
 import { Sparkles, TrendingUp, TrendingDown, Target, Download, Loader2, Play, Square } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { useCurrency } from '@/src/context/CurrencyContext';
+import { safeStorage } from '@/lib/storage';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Joyride, STATUS } from 'react-joyride';
@@ -156,7 +157,7 @@ export default function Analytics() {
   // Joyride Tour State
   const [tourState, setTourState] = useState<any>({ run: false, steps: [] });
   useEffect(() => {
-     if (!localStorage.getItem('tour_what_if')) {
+     if (!safeStorage.getItem('tour_what_if')) {
          setTimeout(() => {
            setTourState({
               run: true,
@@ -179,7 +180,7 @@ export default function Analytics() {
     const finishedStatuses: string[] = [STATUS.FINISHED, STATUS.SKIPPED];
     if (finishedStatuses.includes(status)) {
       setTourState({ ...tourState, run: false });
-      localStorage.setItem('tour_what_if', 'true');
+      safeStorage.setItem('tour_what_if', 'true');
     }
   };
 

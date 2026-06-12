@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import countryToCurrency from 'country-to-currency';
+import { safeStorage } from '@/lib/storage';
 
 export const EXCHANGE_RATES: Record<string, number> = {
   USD: 1.0,
@@ -31,18 +32,18 @@ const CurrencyContext = createContext<CurrencyContextType>({
 
 export const CurrencyProvider = ({ children }: { children: React.ReactNode }) => {
   const [currency, setCurrencyState] = useState(() => {
-    return localStorage.getItem('primary_currency') || 'USD';
+    return safeStorage.getItem('primary_currency') || 'USD';
   });
   const [loadingLocation, setLoadingLocation] = useState(true);
 
   const setCurrency = (newVal: string) => {
-    localStorage.setItem('primary_currency', newVal);
+    safeStorage.setItem('primary_currency', newVal);
     setCurrencyState(newVal);
   };
 
   useEffect(() => {
     // If user has already set a primary choice, do not override with geolocation
-    if (localStorage.getItem('primary_currency')) {
+    if (safeStorage.getItem('primary_currency')) {
       setLoadingLocation(false);
       return;
     }

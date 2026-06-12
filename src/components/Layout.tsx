@@ -6,6 +6,7 @@ import { Home, PieChart, CreditCard, Camera, Settings, LogOut, Bot, Menu, X, Bel
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { safeStorage } from '@/lib/storage';
 import AiAssistantPanel from './AiAssistantPanel';
 
 export default function Layout() {
@@ -33,7 +34,7 @@ export default function Layout() {
   }, []);
 
   const fetchBudgetAlerts = () => {
-    const isEnabled = localStorage.getItem('budget_alerts_enabled') !== 'false';
+    const isEnabled = safeStorage.getItem('budget_alerts_enabled') !== 'false';
     if (!isEnabled) {
       setNotifications([]);
       return;

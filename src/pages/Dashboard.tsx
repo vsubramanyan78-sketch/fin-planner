@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { useCurrency } from '@/src/context/CurrencyContext';
+import { safeStorage } from '@/lib/storage';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -19,6 +20,8 @@ import { cn } from '@/lib/utils';
 import { Joyride, STATUS } from 'react-joyride';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+
+const localStorage = safeStorage;
 
 const COLORS = ['#8b5cf6', '#06b6d4', '#f43f5e', '#10b981', '#f59e0b'];
 
@@ -461,13 +464,18 @@ export default function Dashboard() {
       console.warn("API fetch failed, loading offline-safe cache", err);
       const cachedTxsStr = localStorage.getItem('cached_transactions');
       const cachedBgsStr = localStorage.getItem('cached_budgets');
-      if (cachedTxsStr || cachedBgsStr) {
-        const txs = cachedTxsStr ? JSON.parse(cachedTxsStr) : [];
-        const bgs = cachedBgsStr ? JSON.parse(cachedBgsStr) : [];
-        handleSuccess(txs, bgs);
-        setToastMessage("Network issue. Viewing offline cached transaction history.");
-        setShowToast(true);
-      } else {
+      try {
+        if (cachedTxsStr || cachedBgsStr) {
+          const txs = cachedTxsStr ? JSON.parse(cachedTxsStr) : [];
+          const bgs = cachedBgsStr ? JSON.parse(cachedBgsStr) : [];
+          handleSuccess(txs, bgs);
+          setToastMessage("Network issue. Viewing offline cached transaction history.");
+          setShowToast(true);
+        } else {
+          setLoading(false);
+        }
+      } catch (parseErr) {
+        console.error("Cached data corrupted:", parseErr);
         setLoading(false);
       }
     };
@@ -709,7 +717,13 @@ export default function Dashboard() {
   // Offline Pending Financial Tasks Checklist
   const [tasks, setTasks] = useState<{ id: string; text: string; completed: boolean }[]>(() => {
     const stored = localStorage.getItem('offline_tasks_list');
-    if (stored) return JSON.parse(stored);
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (e) {
+        console.error("Corrupted offline tasks list:", e);
+      }
+    }
     return [
       { id: '1', text: 'Define Extra Debt Paydown (Calculator Widget)', completed: false },
       { id: '2', text: 'Ensure category budget limits are satisfied', completed: false },
@@ -728,8 +742,16 @@ export default function Dashboard() {
   const [activeWidgets, setActiveWidgets] = useState<string[]>([]);
   useEffect(() => {
     const stored = localStorage.getItem('dashboard_widgets');
-    if (stored) setActiveWidgets(JSON.parse(stored));
-    else setActiveWidgets(['savings_goal', 'smart_forecast', 'ai_insights', 'quick_actions']);
+    if (stored) {
+      try {
+        setActiveWidgets(JSON.parse(stored));
+      } catch (e) {
+        console.error("Corrupted dashboard widgets preferences:", e);
+        setActiveWidgets(['savings_goal', 'smart_forecast', 'ai_insights', 'quick_actions']);
+      }
+    } else {
+      setActiveWidgets(['savings_goal', 'smart_forecast', 'ai_insights', 'quick_actions']);
+    }
   }, []);
 
   const isWidgetActive = (id: string) => activeWidgets.includes(id);
