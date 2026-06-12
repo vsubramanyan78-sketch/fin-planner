@@ -6,7 +6,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsToolti
 import { 
   ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, DollarSign, Activity, AlertCircle, 
   Target, Sparkles, X, HeartPulse, Trophy, Star, Medal, ShieldCheck, Fingerprint, 
-  Loader2, Plus, Camera, Mic, Check, HelpCircle, FileSpreadsheet, RotateCcw, LayoutDashboard
+  Loader2, Plus, Camera, Mic, Check, HelpCircle, FileSpreadsheet, RotateCcw, LayoutDashboard, FileText
 } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
 import { useCurrency } from '@/src/context/CurrencyContext';
@@ -17,6 +17,8 @@ import { DebtPaydownCalculator } from '@/src/components/DebtPaydownCalculator';
 import { FinancialHealthScore } from '@/src/components/FinancialHealthScore';
 import { cn } from '@/lib/utils';
 import { Joyride, STATUS } from 'react-joyride';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 const COLORS = ['#8b5cf6', '#06b6d4', '#f43f5e', '#10b981', '#f59e0b'];
 
@@ -415,22 +417,22 @@ export default function Dashboard() {
   const fetchDashboardData = useCallback(() => {
     fetchForecast();
     fetchInsight();
-    Promise.all([
-      fetch('/api/transactions', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json()),
-      fetch('/api/budgets', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json())
-    ]).then(([txData, bgData]) => {
-      const txs = txData.transactions || [];
-      const bgs = bgData.budgets || [];
+    
+    const handleSuccess = (txs: any[], bgs: any[]) => {
       setTransactions(txs);
       setBudgets(bgs);
       setLoading(false);
       
+      localStorage.setItem('cached_transactions', JSON.stringify(txs));
+      localStorage.setItem('cached_budgets', JSON.stringify(bgs));
+
       const realBudgets = bgs.length > 0 ? bgs : [];
       let overriddenBudget = null;
 
       for (const b of realBudgets) {
+        if (!b.category) continue;
         const spent = txs
-          .filter((t: any) => t.type === 'expense' && t.category.toLowerCase() === b.category.toLowerCase())
+          .filter((t: any) => t.type === 'expense' && t.category && t.category.toLowerCase() === b.category.toLowerCase())
           .reduce((acc: number, t: any) => acc + t.amount, 0);
         if (spent > b.limit_amount * 0.9) {
           overriddenBudget = b;
@@ -444,12 +446,54 @@ export default function Dashboard() {
       }
       
       // Spend Alert: Unusual High Velocity
-      const recentTxs = txs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10);
-      const avgRecent = recentTxs.reduce((a, b) => a + b.amount, 0) / 10;
-      if (recentTxs[0]?.amount > avgRecent * 3) {
-          setToastMessage(`Unusual high-velocity expense detected: ${recentTxs[0].title}`);
-          setShowToast(true);
+      if (txs.length > 0) {
+        const sortedTxs = [...txs].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        const recentTxs = sortedTxs.slice(0, 10);
+        const avgRecent = recentTxs.reduce((a, b) => a + b.amount, 0) / (recentTxs.length || 1);
+        if (recentTxs[0]?.amount > avgRecent * 3) {
+            setToastMessage(`Unusual high-velocity expense detected: ${recentTxs[0].title}`);
+            setShowToast(true);
+        }
       }
+    };
+
+    const handleFailure = (err?: any) => {
+      console.warn("API fetch failed, loading offline-safe cache", err);
+      const cachedTxsStr = localStorage.getItem('cached_transactions');
+      const cachedBgsStr = localStorage.getItem('cached_budgets');
+      if (cachedTxsStr || cachedBgsStr) {
+        const txs = cachedTxsStr ? JSON.parse(cachedTxsStr) : [];
+        const bgs = cachedBgsStr ? JSON.parse(cachedBgsStr) : [];
+        handleSuccess(txs, bgs);
+        setToastMessage("Network issue. Viewing offline cached transaction history.");
+        setShowToast(true);
+      } else {
+        setLoading(false);
+      }
+    };
+
+    if (!navigator.onLine) {
+      handleFailure();
+      return;
+    }
+
+    Promise.all([
+      fetch('/api/transactions', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => {
+        if (!r.ok) throw new Error("TX details error");
+        return r.json();
+      }),
+      fetch('/api/budgets', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => {
+        if (!r.ok) throw new Error("Budget details error");
+        return r.json();
+      })
+    ])
+    .then(([txData, bgData]) => {
+      const txs = txData.transactions || [];
+      const bgs = bgData.budgets || [];
+      handleSuccess(txs, bgs);
+    })
+    .catch((err) => {
+      handleFailure(err);
     });
   }, [token, fetchForecast, fetchInsight]);
 
@@ -458,6 +502,49 @@ export default function Dashboard() {
     window.addEventListener('transactionAdded', fetchDashboardData);
     return () => window.removeEventListener('transactionAdded', fetchDashboardData);
   }, [fetchDashboardData]);
+
+  const downloadDashboardPDF = async () => {
+    try {
+      setExportingPdf(true);
+      const element = document.getElementById("dashboard-capture-area");
+      if (!element) {
+        console.warn("Capture area id 'dashboard-capture-area' not found");
+        return;
+      }
+      
+      const canvas = await html2canvas(element, {
+        scale: 2, // High resolution
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#0a0a14",
+        logging: false,
+      });
+      
+      const imgData = canvas.toDataURL("image/jpeg", 0.95);
+      const pdf = new jsPDF("p", "mm", "a4");
+      const imgWidth = 210;
+      const pageHeight = 295;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+      
+      pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+      
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+      
+      pdf.save(`neurofin_dashboard_snapshot_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (err) {
+      console.error("Failed to generate PDF snapshot:", err);
+    } finally {
+      setExportingPdf(false);
+    }
+  };
 
   const handleAutoRebalanceBudgets = async () => {
     try {
@@ -616,6 +703,26 @@ export default function Dashboard() {
      return shortfalls.sort((a, b) => b.overspend - a.overspend).slice(0, 3);
   };
   const smartShortfalls = getSmartForecastShortfalls();
+
+  const [exportingPdf, setExportingPdf] = useState(false);
+
+  // Offline Pending Financial Tasks Checklist
+  const [tasks, setTasks] = useState<{ id: string; text: string; completed: boolean }[]>(() => {
+    const stored = localStorage.getItem('offline_tasks_list');
+    if (stored) return JSON.parse(stored);
+    return [
+      { id: '1', text: 'Define Extra Debt Paydown (Calculator Widget)', completed: false },
+      { id: '2', text: 'Ensure category budget limits are satisfied', completed: false },
+      { id: '3', text: 'Validate current savings rate percentage', completed: false },
+      { id: '4', text: 'Audit monthly active subscription renewals', completed: false }
+    ];
+  });
+
+  const toggleTask = (id: string) => {
+    const updated = tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t);
+    setTasks(updated);
+    localStorage.setItem('offline_tasks_list', JSON.stringify(updated));
+  };
 
   // Widget Manager Preferences
   const [activeWidgets, setActiveWidgets] = useState<string[]>([]);
@@ -896,7 +1003,7 @@ export default function Dashboard() {
     budgets.forEach((b: any) => {
       const catName = b.category || '';
       const spent = transactions
-        .filter((t: any) => t.type === 'expense' && t.category.toLowerCase() === catName.toLowerCase())
+        .filter((t: any) => t.type === 'expense' && t.category && t.category.toLowerCase() === catName.toLowerCase())
         .reduce((sum: number, t: any) => sum + t.amount, 0);
       const limit = b.limit_amount || 0;
       if (limit > 0) {
@@ -911,7 +1018,7 @@ export default function Dashboard() {
   const approachingBudgets = getApproachingBudgets();
 
   return (
-    <div className="flex flex-col gap-6 relative pb-12">
+    <div id="dashboard-capture-area" className="flex flex-col gap-6 relative pb-12 p-4 bg-[#0c0a1a]">
       <Joyride {...({
         callback: handleJoyrideCallback,
         continuous: true,
@@ -985,6 +1092,26 @@ export default function Dashboard() {
                 <span className="text-sm text-white font-mono font-bold leading-none">{savingsStreak} Days <span className="text-white/40 text-xs font-sans font-normal ml-0.5">under budget</span></span>
               </div>
             </div>
+
+            {/* PDF Layout Snapshot Button */}
+            <Button 
+              onClick={downloadDashboardPDF}
+              disabled={exportingPdf}
+              className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 font-medium rounded-2xl h-[46px] px-4 cursor-pointer"
+              variant="outline"
+            >
+              {exportingPdf ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Generating Snapshot...
+                </>
+              ) : (
+                <>
+                  <FileText className="w-4 h-4 mr-2" />
+                  Layout PDF
+                </>
+              )}
+            </Button>
 
             {/* Widget Manager Button */}
             <Dialog>
@@ -1654,6 +1781,36 @@ export default function Dashboard() {
                         <h5 className="font-semibold text-white/90 text-[11px]">Neural Sync Purge</h5>
                         <p className="text-[11px] text-white/50 leading-normal">Consolidate auxiliary media nodes to secure <strong className="text-cyan-400 font-mono">{formatAmount(12)}/mo</strong>.</p>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Offline Pending Task List */}
+                  <div className="mt-6 pt-4 border-t border-white/5 space-y-3">
+                    <div>
+                      <span className="text-[10px] font-mono text-cyan-400 uppercase tracking-wider">OFFLINE LEDGER TASKS</span>
+                      <h5 className="font-bold text-white text-[11px] mt-0.5">Pending Financial Checklist</h5>
+                    </div>
+                    <div className="space-y-2">
+                      {tasks.map((t) => (
+                        <div 
+                          key={t.id} 
+                          onClick={() => toggleTask(t.id)}
+                          className="flex items-center gap-3 p-2 bg-black/20 rounded-lg border border-white/5 hover:bg-black/30 transition-all cursor-pointer group"
+                        >
+                          <div className={`w-4.5 h-4.5 rounded flex items-center justify-center border transition-all ${
+                            t.completed 
+                              ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.3)]' 
+                              : 'border-white/20 group-hover:border-white/40 text-transparent'
+                          }`}>
+                            <Check className="w-3 h-3" strokeWidth={3} />
+                          </div>
+                          <span className={`text-[10px] font-mono transition-all ${
+                            t.completed ? 'text-white/40 line-through' : 'text-white/80'
+                          }`}>
+                            {t.text}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>

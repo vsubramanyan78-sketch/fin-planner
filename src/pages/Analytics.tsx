@@ -370,7 +370,7 @@ export default function Analytics() {
 
   const budgetCategories = budgetList.map(item => {
     const spent = transactions
-      .filter((t: any) => t.type === 'expense' && t.category.toLowerCase() === item.name.toLowerCase())
+      .filter((t: any) => t.type === 'expense' && t.category && t.category.toLowerCase() === item.name.toLowerCase())
       .reduce((acc: number, t: any) => acc + t.amount, 0);
     return { name: item.name, spent, limit: item.limit, color: item.color };
   });
